@@ -1,0 +1,99 @@
+<server>
+    <!--
+        chat_robot配置
+        port : int, 启动服务的端口
+        excel_engine : excel导入数据使用的引擎，可以是xlrd或者openpyxl
+        excel_batch_num : int, excel导入数据的情况下，每次导入的记录数
+        extend_plugin_path : 扩展插件代码文件目录
+        enable_client : bool，是否启动客户端
+        client_path : 客户端目录
+        qa_config : 问答处理配置
+            use_nlp : bool, 是否使用NLP自然语言解析辅助(支持意图猜测)
+            session_overtime : float, session超时时间(秒)
+            session_checktime : float, 检查session超时的间隔时间(秒)
+            match_distance : float, 匹配向量距离最小值, 默认值0.9
+            multiple_distance : float, 如果匹配不到最优, 多选项匹配距离的最小值, 默认值0.8
+            multiple_in_collection : int, 如果匹配不到最优，在同一个问题分类下最多匹配的标准问题数量
+            nprobe : int, 盘查的单元数量(cell number of probe)
+            no_answer_milvus_id : 当找不到问题答案时搜寻标准问题的milvus id，请设置特殊的id值，并在AnswerDB中导入对应的问题和答案
+            no_answer_collection : 与no_answer_milvus_id配套使用，指定默认标准问题对应的collection
+                注意：
+                1、如果不设置no_answer_milvus_id，请置为-1，此时系统直接获取no_answer_str作为返回的答案
+                2、如果需要不同的conllection返回不同的答案，可以在每个collection下都设置一个no_answer_milvus_id对应的标准问题
+                    系统在找不到当前conllection下标准问题的情况，将使用默认的collection的答案回复
+            no_answer_str : 没有设置no_answer_milvus_id时找不到答案将返回该字符串
+            select_options_tip : 匹配到多个问题时选项的提示
+            select_options_tip_no_session : 在没有session的情况下，匹配到多个问题时选项的提示
+            select_options_out_index : 在输入超出选项范围内容时的提示，提示中可以通过{$len$}替换为选项数
+        nlp_config : NLP处理配置
+            set_dictionary : 指定Jieba默认字典文件（如果需要更换）
+            user_dict : 指定Jieba用户字典文件
+            enable_paddle : bool, 是否使用paddle模式训练模型进行分词，默认Fasle
+            parallel_num : int, 并行分词模式(多行的情况下并行处理，不支持Windows)
+        milvus : Milvus服务配置
+            host : Milvus服务器地址
+            port : int, Milvus服务器端口
+            pool : 连接池选择，可选QueuePool、SingletonThread、Singleton，默认SingletonThread
+            # 以下为创建查询索引相关参数
+            index_file_size : int, 索引文件大小
+            dimension : int, 维度
+            metric_type : 度量类型
+            nlist : int, 聚类时总的分桶数
+        bert_client : Bert的客户端配置
+            ip : bert服务端ip
+            port : int, bert服务端端口
+            其余参数可参考bert-serving-client官方文档
+        answerdb : 答案管理数据库
+            type : 数据库类型，MySQL
+    -->
+    <port type="int">8001</port>
+    <excel_engine>xlrd</excel_engine>
+    <excel_batch_num type="int">100</excel_batch_num>
+    <extend_plugin_path>../test/plugins</extend_plugin_path>
+    <enable_client type="bool">true</enable_client>
+    <client_path>./client</client_path>
+    <qa_config>
+        <use_nlp type="bool">true</use_nlp>
+        <session_overtime type="float">300.0</session_overtime>
+        <session_checktime type="float">60.0</session_checktime>
+        <match_distance type="float">0.9</match_distance>
+        <multiple_distance type="float">0.8</multiple_distance>
+        <multiple_in_collection type="int">3</multiple_in_collection>
+        <nprobe type="int">64</nprobe>
+        <no_answer_milvus_id type="int">0</no_answer_milvus_id>
+        <no_answer_collection>test_chat</no_answer_collection>
+        <no_answer_str>对不起，我暂时回答不了您这个问题</no_answer_str>
+        <select_options_tip>找到了多个匹配的问题，请输入序号选择您的问题:</select_options_tip>
+        <select_options_tip_no_session>找到了多个匹配的问题, 请参照输入您的问题:</select_options_tip_no_session>
+        <select_options_out_index>请输入正确的问题序号(范围为: 1 - {$len$})，例如输入"1"</select_options_out_index>
+    </qa_config>
+    <nlp_config>
+        <set_dictionary></set_dictionary>
+        <user_dict></user_dict>
+        <enable_paddle type="bool">false</enable_paddle>
+    </nlp_config>
+    <milvus>
+        <host>10.16.85.63</host>
+        <port type="int">19530</port>
+        <pool>SingletonThread</pool>
+        <index_file_size type="int">1024</index_file_size>
+        <dimension type="int">768</dimension>
+        <metric_type>IP</metric_type>
+        <nlist type="int">16384</nlist>
+    </milvus>
+    <bert_client>
+        <ip>10.16.85.63</ip>
+        <port type="int">5555</port>
+        <port_out type="int">5556</port_out>
+    </bert_client>
+    <answerdb>
+        <db_type>MySQL</db_type>
+        <host>10.16.85.63</host>
+        <port type="int">3306</port>
+        <user>root</user>
+        <password>123456</password>
+        <database>answerdb</database>
+        <connect_timeout type="int">10</connect_timeout>
+        <charset>utf8mb4</charset>
+    </answerdb>
+</server>
