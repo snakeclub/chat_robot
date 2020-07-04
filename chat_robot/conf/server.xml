@@ -7,6 +7,7 @@
         extend_plugin_path : 扩展插件代码文件目录
         enable_client : bool，是否启动客户端
         client_path : 客户端目录
+        debug : 是否是debug模式
         qa_config : 问答处理配置
             use_nlp : bool, 是否使用NLP自然语言解析辅助(支持意图猜测)
             session_overtime : float, session超时时间(秒)
@@ -52,6 +53,7 @@
     <extend_plugin_path>../test/plugins</extend_plugin_path>
     <enable_client type="bool">true</enable_client>
     <client_path>./client</client_path>
+    <debug type="bool">true</debug>
     <qa_config>
         <use_nlp type="bool">true</use_nlp>
         <session_overtime type="float">300.0</session_overtime>
@@ -96,4 +98,63 @@
         <connect_timeout type="int">10</connect_timeout>
         <charset>utf8mb4</charset>
     </answerdb>
+    <logger>
+        <conf_file_name></conf_file_name>
+        <logger_name>ConsoleAndFile</logger_name>
+        <logfile_path>./logs/server.log</logfile_path>
+        <config_type>JSON_STR</config_type>
+        <json_str>{
+                    "version": 1,
+                    "disable_existing_loggers": false,
+                    "formatters": {
+                        "simpleFormatter": {
+                            "format": "[%(asctime)s.%(millisecond)s][%(levelname)s][PID:%(process)d][FILE:%(filename)s][FUN:%(funcName)s]%(message)s",
+                            "datefmt": "%Y_%m_%d %H:%M:%S"
+                        }
+                    },
+
+                    "handlers": {
+                        "ConsoleHandler": {
+                            "class": "logging.StreamHandler",
+                            "level": "DEBUG",
+                            "formatter": "simpleFormatter",
+                            "stream": "ext://sys.stdout"
+                        },
+                        "FileHandler": {
+                            "class": "logging.handlers.RotatingFileHandler",
+                            "level": "DEBUG",
+                            "formatter": "simpleFormatter",
+                            "filename": "./logs/server.log",
+                            "maxBytes": 10485760,
+                            "backupCount": 1000,
+                            "encoding": "utf8"
+                        }
+                    },
+
+                    "loggers": {
+                        "Console": {
+                            "level": "DEBUG",
+                            "handlers": ["ConsoleHandler"]
+                        },
+                        "File": {
+                            "level": "DEBUG",
+                            "handlers": ["FileHandler"],
+                            "propagate": "no"
+                        },
+                        "ConsoleAndFile": {
+                            "level": "DEBUG",
+                            "handlers": ["ConsoleHandler", "FileHandler"],
+                            "propagate": "no"
+                        }
+                    },
+
+                    "root": {
+                        "level": "DEBUG",
+                        "handlers": []
+                    }
+                }</json_str>
+        <auto_create_conf>true</auto_create_conf>
+        <is_create_logfile_by_day>true</is_create_logfile_by_day>
+        <call_fun_level>0</call_fun_level>
+    </logger>
 </server>

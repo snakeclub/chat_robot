@@ -20,6 +20,7 @@ from flask_cors import CORS
 from flask import Flask, request, send_file, jsonify
 from flask_restful import reqparse
 from werkzeug.routing import Rule, Map
+from HiveNetLib.simple_log import Logger
 from HiveNetLib.base_tools.file_tool import FileTool
 from HiveNetLib.base_tools.import_tool import ImportTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
@@ -50,15 +51,33 @@ class QAServerLoader(object):
         @param {dict} server_config - 服务配置字典
         """
         self.debug = server_config.get('debug', True)
+        self.execute_path = server_config['execute_path']
+
+        # 日志处理
+        self.logger: Logger = None
+        if 'logger' in server_config.keys():
+            _logger_config = server_config['logger']
+            if len(_logger_config['conf_file_name']) > 0 and _logger_config['conf_file_name'][0] == '.':
+                # 相对路径
+                _logger_config['conf_file_name'] = os.path.join(
+                    self.execute_path, _logger_config['conf_file_name']
+                )
+            if len(_logger_config['logfile_path']) > 0 and _logger_config['logfile_path'][0] == '.':
+                # 相对路径
+                _logger_config['logfile_path'] = os.path.join(
+                    self.execute_path, _logger_config['logfile_path']
+                )
+            self.logger = Logger.create_logger_by_dict(_logger_config)
+
         self.server_config = server_config
         self.app = Flask(__name__)
         CORS(self.app)
         self.app.debug = self.debug
         self.app.send_file_max_age_default = datetime.timedelta(seconds=1)  # 设置文件缓存1秒
+        self.app.config['JSON_AS_ASCII'] = False  # 显示中文
 
         # 插件处理
         self.extend_plugin_path = self.server_config.get('extend_plugin_path', '')
-        self.execute_path = self.server_config['execute_path']
         # plugins函数字典，格式为{'type':{'class_name': {'fun_name': fun, }, },}
         self.plugins = dict()
         self.load_plugins(os.path.join(self.execute_path, 'plugins'))
@@ -72,7 +91,7 @@ class QAServerLoader(object):
         # 装载数据管理模块
         self.qa_manager = QAManager(
             self.server_config['answerdb'], self.server_config['milvus'],
-            self.server_config['bert_client'], debug=self.server_config['debug'],
+            self.server_config['bert_client'], logger=self.logger,
             excel_batch_num=self.server_config['excel_batch_num'],
             excel_engine=self.server_config['excel_engine']
         )
@@ -84,13 +103,14 @@ class QAServerLoader(object):
             set_dictionary=None if _nlp_config['set_dictionary'] == '' else _nlp_config['set_dictionary'],
             user_dict=None if _nlp_config['user_dict'] == '' else _nlp_config['user_dict'],
             enable_paddle=_nlp_config['enable_paddle'],
-            parallel_num=_nlp_config.get('parallel_num', None)
+            parallel_num=_nlp_config.get('parallel_num', None),
+            logger=self.logger
         )
 
         # 初始化QA模块
         self.qa = QA(
             self.qa_manager, self.nlp, self.server_config['execute_path'], plugins=self.plugins,
-            qa_config=self.server_config['qa_config'], debug=self.server_config['debug'],
+            qa_config=self.server_config['qa_config'], logger=self.logger
         )
 
         # 动态加载路由
@@ -103,8 +123,6 @@ class QAServerLoader(object):
                 _client_path = os.path.realpath(
                     os.path.join(self.execute_path, _client_path)
                 )
-            if self.debug:
-                print('client path: %s' % _client_path)
 
             self.app.static_folder = os.path.join(_client_path, 'static')
             self.app.static_url_path = '/static/'
@@ -115,9 +133,11 @@ class QAServerLoader(object):
             )
             self.app.view_functions['client'] = self._client_view_function
 
+            # 打印
+            self._log_debug('client path: %s' % _client_path)
+
         FlaskTool.add_route_by_class(self.app, self.api_class)
-        if self.app.debug:
-            print(self.app.url_map)
+        self._log_debug(str(self.app.url_map))
 
     #############################
     # 公共函数
@@ -161,15 +181,14 @@ class QAServerLoader(object):
                 _plugin_type = _type_fun()
                 self.plugins.setdefault(_plugin_type, dict())
                 self.plugins[_plugin_type][_class_name] = dict()
-                if self.debug:
-                    print('QAServerLoader.load_plugins add [%s] plugin file[%s] class[%s]:' % (
-                        _plugin_type, _file, _class_name))
+                self._log_debug(
+                    'add [%s] plugin file[%s] class[%s]:' % (_plugin_type, _file, _class_name),
+                )
 
                 for _name, _value in inspect.getmembers(_class):
                     if not _name.startswith('_') and callable(_value) and _name not in ['plugin_type']:
                         self.plugins[_plugin_type][_class_name][_name] = _value
-                        if self.debug:
-                            print('    add fun[%s]' % _name)
+                        self._log_debug('    add fun[%s]' % _name)
 
     #############################
     # 内部函数
@@ -177,6 +196,42 @@ class QAServerLoader(object):
 
     def _client_view_function(self):
         return self.app.send_static_file('index.html')  # index.html在static文件夹下
+
+    def _log_info(self, msg: str, *args, **kwargs):
+        """
+        输出info日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.info(msg, *args, **kwargs)
+
+    def _log_debug(self, msg: str, *args, **kwargs):
+        """
+        输出debug日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.debug(msg, *args, **kwargs)
+
+    def _log_error(self, msg: str, *args, **kwargs):
+        """
+        输出error日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.error(msg, *args, **kwargs)
 
 
 if __name__ == '__main__':

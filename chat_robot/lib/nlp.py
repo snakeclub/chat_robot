@@ -81,8 +81,9 @@ class NLP(object):
     自然语言语义解析工具类
     """
 
-    def __init__(self, plugins: dict = {}, data_manager_para: dict = {}, set_dictionary: str = None, user_dict: str = None, enable_paddle=False,
-                 parallel_num: int = None):
+    def __init__(self, plugins: dict = {}, data_manager_para: dict = {}, set_dictionary: str = None,
+                 user_dict: str = None, enable_paddle=False,
+                 parallel_num: int = None, logger=None):
         """
         构造函数
 
@@ -98,7 +99,9 @@ class NLP(object):
                 台中
         @param {bool} enable_paddle=False - 是否使用paddle模式训练模型进行分词
         @param {int} parallel_num=None - 并行分词模式(多行的情况下并行处理，不支持Windows)
+        @param {Logger} logger=None - 日志对象
         """
+        self.logger = logger
         self.plugins = plugins
         self.DATA_MANAGER_PARA = data_manager_para
 
@@ -250,6 +253,7 @@ class NLP(object):
                 )
                 _pitem['info'].update(_info_dict)
 
+        self._log_debug('question: %s\n%s' % (question, str(_purpose)))
         return _purpose
 
     #############################
@@ -323,6 +327,45 @@ class NLP(object):
 
         # 没有找到
         return '', None, None
+
+    #############################
+    # 日志输出相关函数
+    #############################
+    def _log_info(self, msg: str, *args, **kwargs):
+        """
+        输出info日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.info(msg, *args, **kwargs)
+
+    def _log_debug(self, msg: str, *args, **kwargs):
+        """
+        输出debug日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.debug(msg, *args, **kwargs)
+
+    def _log_error(self, msg: str, *args, **kwargs):
+        """
+        输出error日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.error(msg, *args, **kwargs)
 
 
 if __name__ == '__main__':

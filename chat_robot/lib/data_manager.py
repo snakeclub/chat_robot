@@ -51,20 +51,19 @@ class QAManager(object):
     """
 
     def __init__(self, answer_db_para: dict, milvus_para: dict, bert_para: dict,
-                 debug=False, excel_batch_num=100, excel_engine='xlrd'):
+                 logger=None, excel_batch_num=100, excel_engine='xlrd'):
         """
         问答数据管理
 
         @param {dict} answer_db_para - 数据库连接参数，server.xml的answerdb配置
         @param {dict} milvus_para - Milvus服务连接参数，server.xml的milvus配置
         @param {dict} bert_para - BERT服务连接参数，server.xml的bert_client配置
-
-        @param {bool} debug=False - 是否启用debug模式
+        @param {bool} logger=None - 日志对象
         @param {int} excel_batch_num=100 - excel导入数据时每批处理的数据记录数
         @param {string} excel_engine='xlrd' - excel导入数据使用的引擎，可以是xlrd或者openpyxl
         """
         # 基础参数
-        self.debug = debug  # 是否启动debug
+        self.logger = logger
         self.excel_batch_num = excel_batch_num  # 处理excel时一次处理的数据量
         self.excel_engine = excel_engine  # 使用读引擎，可以是xlrd或者openpyxl
 
@@ -94,9 +93,6 @@ class QAManager(object):
         self.load_common_para()
         self.load_nlp_sure_judge_dict()
         self.load_nlp_purpos_config_dict()
-
-        # 放到全局变量供应用访问
-        RunTool.set_global_var('DATA_MANAGER_PARA', self.DATA_MANAGER_PARA)
 
     #############################
     # 工具函数
@@ -163,6 +159,7 @@ class QAManager(object):
 
         # 更新内存
         self.DATA_MANAGER_PARA['common_para'].update(_para_dict)
+        self._log_debug('Load common_para success:\n%s' % str(_para_dict))
 
     def load_nlp_sure_judge_dict(self):
         """
@@ -177,6 +174,7 @@ class QAManager(object):
 
         # 添加到内存
         self.DATA_MANAGER_PARA['nlp_sure_judge_dict'] = _judge_dict
+        self._log_debug('Load nlp_sure_judge_dict success:\n%s' % str(_judge_dict))
 
     def load_nlp_purpos_config_dict(self):
         """
@@ -197,6 +195,7 @@ class QAManager(object):
 
         # 添加到内存
         self.DATA_MANAGER_PARA['nlp_purpos_config_dict'] = _pupos_config
+        self._log_debug('Load nlp_purpos_config_dict success:\n%s' % str(_pupos_config))
 
     def add_collection(self, collection: str, order_num: int = 0, remark: str = ''):
         """
@@ -283,8 +282,7 @@ class QAManager(object):
             _query_sql = _query_sql.order_by(*order_by_values)
 
         # 计算列表总数
-        if self.debug:
-            print('QAManager.query_collection_page_list execute count sql: %s' % str(_query_sql.sql()))
+        self._log_debug('execute count sql: %s' % str(_query_sql.sql()))
 
         _result['total'] = _query_sql.count()
         _result['total_page'] = math.ceil(_result['total'] / page_size)
@@ -296,16 +294,14 @@ class QAManager(object):
         for _col in _query_sql._returning:
             _result['header'].append(_col.column_name)
 
-        if self.debug:
-            print('QAManager.query_collection_page_list execute sql: %s' % str(_query_sql.sql()))
+        self._log_debug('execute sql: %s' % str(_query_sql.sql()))
 
         # 查询并组成rows
         for _row in _query_sql.tuples():
             _result['rows'].append(_row)
 
         # 返回结果
-        if self.debug:
-            print('QAManager.query_collection_page_list returns: %s' % str(_result))
+        self._log_debug('returns: %s' % str(_result))
 
         return _result
 
@@ -334,8 +330,7 @@ class QAManager(object):
         with self.get_bert_client() as _bert, self.get_milvus() as _milvus:
             _vectors = _bert.encode([question, ])
             _question_vectors = self.normaliz_vec(_vectors.tolist())
-            if self.debug:
-                print('QAManager.add_std_question get question vectors: %s' % str(_question_vectors))
+            self._log_debug('get question vectors: %s' % str(_question_vectors))
 
             # 存入Milvus服务, 先创建分类
             self._add_collection(collection, _milvus)
@@ -370,8 +365,7 @@ class QAManager(object):
             _txn.commit()
 
         # 返回结果
-        if self.debug:
-            print('QAManager.add_std_question insert question: %s' % str(_std_q))
+        self._log_debug('insert question: %s' % str(_std_q))
         return _std_q.id
 
     def add_ext_question(self, std_question_id: int, question: str) -> int:
@@ -393,8 +387,7 @@ class QAManager(object):
         with self.get_bert_client() as _bert:
             _vectors = _bert.encode([question, ])
             _question_vectors = self.normaliz_vec(_vectors.tolist())
-            if self.debug:
-                print('QAManager.add_ext_question get question vectors: %s' % str(_question_vectors))
+            self._log_debug('get question vectors: %s' % str(_question_vectors))
 
         # 存入Milvus服务
         with self.get_milvus() as _milvus:
@@ -411,8 +404,7 @@ class QAManager(object):
         )
 
         # 返回结果
-        if self.debug:
-            print('QAManager.add_ext_question insert question: %s' % str(_ext_q))
+        self._log_debug('insert question: %s' % str(_ext_q))
         return _ext_q.id
 
     def import_questions_by_xls(self, file_path: str, reset_questions: bool = False):
@@ -425,7 +417,7 @@ class QAManager(object):
         with pd.io.excel.ExcelFile(file_path) as _excel_io, self.get_milvus() as _milvus, self.get_bert_client() as _bert:
             # 重置数据库
             if reset_questions:
-                self.turncate_all_questions()
+                self.truncate_all_questions()
 
             # 处理Collections
             self._import_collections_by_xls(_excel_io, _milvus, _bert)
@@ -450,7 +442,7 @@ class QAManager(object):
             self._import_nlp_purpos_config_dict_by_xls(
                 _excel_io, _milvus, _bert, _std_question_id_mapping)
 
-    def turncate_all_questions(self):
+    def truncate_all_questions(self):
         """
         清空所有问题组(慎用)
         """
@@ -464,14 +456,6 @@ class QAManager(object):
                         _milvus.drop_collection(_collection), 'drop_collection'
                     )
 
-            # 删除其他分类, 只删除已有的，让一个服务能支持多个应用
-            # _status, _clist = _milvus.list_collections()
-            # self.confirm_milvus_status(_status, 'list_collections')
-            # for _collection in _clist:
-            #     self.confirm_milvus_status(
-            #         _milvus.drop_collection(_collection), 'drop_collection'
-            #     )
-
         # 等待5秒删除
         time.sleep(5)
 
@@ -481,9 +465,46 @@ class QAManager(object):
 
         # 清空清单
         self.sorted_collection = list()
+        self._log_info('truncate_all_questions suceess!')
 
-        if self.debug:
-            print('QAManager.turncate_all_questions suceess!')
+    def delete_milvus_collection(self, collections: list = [], truncate: bool = False):
+        """
+        删除Milvus服务的问题分类
+
+        @param {list} collections=[] - 要删除的问题清单
+        @param {bool} truncate=False - 是否删除所有分类
+        """
+        with self.get_milvus() as _milvus:
+            if truncate:
+                # 清空所有
+                _status, _clist = _milvus.list_collections()
+                self.confirm_milvus_status(_status, 'list_collections')
+            else:
+                # 只清空传入列表
+                _clist = []
+                for _collection in collections:
+                    _status, _exists = _milvus.has_collection(_collection)
+                    self.confirm_milvus_status(_status, 'has_collection')
+                    if _exists:
+                        _clist.append(_collection)
+
+            # 开始清除操作
+            for _collection in _clist:
+                self.confirm_milvus_status(
+                    _milvus.drop_collection(_collection), 'drop_collection'
+                )
+
+        # 执行完成
+        self._log_info('delete milvus collections %s suceess!' % str(_clist))
+
+    def reset_db(self):
+        """
+        重置数据库
+        """
+        # 重建所有数据表（相当于清除数据）
+        AnswerDao.drop_tables(ANSWERDB_TABLES)
+        AnswerDao.create_tables(ANSWERDB_TABLES)
+        self._log_info('reset database suceess!')
 
     #############################
     # 内部函数
@@ -514,8 +535,7 @@ class QAManager(object):
         """
         if collection in self.sorted_collection:
             # 无需再添加
-            if self.debug:
-                print('QAManager._add_collection collection is exists: %s' % collection)
+            self._log_debug('collection is exists: %s' % collection)
             return
 
         # 添加Milvus服务中的分类
@@ -533,8 +553,8 @@ class QAManager(object):
             self.confirm_milvus_status(
                 milvus.create_collection(_param), 'create_collection'
             )
-            if self.debug:
-                print('QAManager._add_collection added Milvus collection [%s]' % collection)
+
+            self._log_debug('added Milvus collection [%s]' % collection)
 
             # 创建索引
             _index_param = {'nlist': self.nlist}
@@ -542,8 +562,8 @@ class QAManager(object):
                 milvus.create_index(collection, mv.IndexType.IVF_SQ8, _index_param),
                 'create_index'
             )
-            if self.debug:
-                print('QAManager._add_collection added Milvus collection [%s] index' % collection)
+
+            self._log_debug('added Milvus collection [%s] index' % collection)
 
         # 添加AnswerDB数据
         _order_num_match = (CollectionOrder.select()
@@ -560,8 +580,7 @@ class QAManager(object):
             {'collection': collection, 'order_num': order_num, 'remark': remark}
         ).execute()
 
-        if self.debug:
-            print('QAManager._add_collection insert collection [%s] to AnswerDB' % collection)
+        self._log_debug('insert collection [%s] to AnswerDB' % collection)
 
         # 将分类加入到内存排序队列中
         self.sorted_collection.append(collection)
@@ -597,8 +616,7 @@ class QAManager(object):
         _status, _milvus_ids = milvus.insert(
             collection, [question_vector, ], partition_tag=partition)
         self.confirm_milvus_status(_status, 'insert')
-        if self.debug:
-            print('QAManager._add_milvus_question insert _milvus_ids: %s' % str(_milvus_ids))
+        self._log_debug('insert _milvus_ids: %s' % str(_milvus_ids))
 
         return _milvus_ids[0]
 
@@ -632,8 +650,7 @@ class QAManager(object):
                     order_num=_row['order_num'], remark=_row['remark']
                 )
 
-            if self.debug:
-                print('QAManager.import_questions_by_xls imported collection: %s' % str(_df))
+            self._log_debug('imported collection: %s' % str(_df))
 
     def _import_std_questions_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient):
         """
@@ -688,9 +705,8 @@ class QAManager(object):
                 # 批量生成向量
                 _vectors = bert.encode(_df['question'].values.tolist())
                 _question_vectors = self.normaliz_vec(_vectors.tolist())
-                if self.debug:
-                    print('QAManager.import_questions_by_xls get std_questions[%d] bert vectors, count: %s' % (
-                        _skiprows, str(len(_question_vectors))))
+                self._log_debug('get std_questions[%d] bert vectors, count: %s' % (
+                    _skiprows, str(len(_question_vectors))))
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加标准问题, _index为行，_row为数据集
@@ -716,9 +732,7 @@ class QAManager(object):
                     if str(_row['id']) != 'nan':
                         _std_question_id_mapping[_row['id']] = _std_q.id
 
-                if self.debug:
-                    print('QAManager.import_questions_by_xls imported std_question[%d]: %s' % (
-                        _skiprows, str(_df)))
+                self._log_debug('imported std_question[%d]: %s' % (_skiprows, str(_df)))
 
         # 返回映射
         return _std_question_id_mapping
@@ -794,9 +808,7 @@ class QAManager(object):
                         answer=_row['answer']
                     )
 
-                if self.debug:
-                    print('QAManager.import_questions_by_xls imported answers[%d]: %s' % (
-                        _skiprows, str(_df)))
+                self._log_debug('imported answers[%d]: %s' % (_skiprows, str(_df)))
 
     def _import_ext_questions_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient,
                                      std_question_id_mapping: dict):
@@ -837,9 +849,8 @@ class QAManager(object):
                 # 批量生成向量
                 _vectors = bert.encode(_df['question'].values.tolist())
                 _question_vectors = self.normaliz_vec(_vectors.tolist())
-                if self.debug:
-                    print('QAManager.import_questions_by_xls get ext_questions[%d] bert vectors count: %s' % (
-                        _skiprows, str(len(_question_vectors))))
+                self._log_debug('get ext_questions[%d] bert vectors count: %s' % (
+                    _skiprows, str(len(_question_vectors))))
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加扩展问题, _index为行，_row为数据集
@@ -859,9 +870,7 @@ class QAManager(object):
                         question=_row['question']
                     )
 
-                if self.debug:
-                    print('QAManager.import_questions_by_xls imported ext_questions[%d]: %s' % (
-                        _skiprows, str(_df)))
+                self._log_debug('imported ext_questions[%d]: %s' % (_skiprows, str(_df)))
 
     def _import_common_para_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient):
         """
@@ -892,8 +901,7 @@ class QAManager(object):
             # 导入后重新加载到内存
             self.load_common_para()
 
-            if self.debug:
-                print('QAManager.import_questions_by_xls imported common_para: %s' % str(_df))
+            self._log_debug('imported common_para: %s' % str(_df))
 
     def _import_nlp_sure_judge_dict_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient):
         """
@@ -923,8 +931,7 @@ class QAManager(object):
             # 导入后重新加载到内存
             self.load_nlp_sure_judge_dict()
 
-            if self.debug:
-                print('QAManager.import_questions_by_xls imported nlp_purpos_config_dict: %s' % str(_df))
+            self._log_debug('imported nlp_purpos_config_dict: %s' % str(_df))
 
     def _import_nlp_purpos_config_dict_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient,
                                               std_question_id_mapping: dict):
@@ -1013,9 +1020,46 @@ class QAManager(object):
                 # 加载到内存
                 self.load_nlp_purpos_config_dict()
 
-                if self.debug:
-                    print('QAManager.import_questions_by_xls imported nlp_purpos_config_dict[%d]: %s' % (
-                        _skiprows, str(_df)))
+                self._log_debug('imported nlp_purpos_config_dict[%d]: %s' % (_skiprows, str(_df)))
+
+    #############################
+    # 日志输出相关函数
+    #############################
+    def _log_info(self, msg: str, *args, **kwargs):
+        """
+        输出info日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.info(msg, *args, **kwargs)
+
+    def _log_debug(self, msg: str, *args, **kwargs):
+        """
+        输出debug日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.debug(msg, *args, **kwargs)
+
+    def _log_error(self, msg: str, *args, **kwargs):
+        """
+        输出error日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.error(msg, *args, **kwargs)
 
 
 if __name__ == '__main__':

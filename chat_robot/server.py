@@ -15,7 +15,6 @@
 import os
 import sys
 import copy
-import getopt
 from HiveNetLib.simple_xml import SimpleXml
 from HiveNetLib.base_tools.file_tool import FileTool
 from HiveNetLib.base_tools.run_tool import RunTool
@@ -45,31 +44,15 @@ def start_server(**kwargs):
 
 
 if __name__ == '__main__':
-    try:
-        opts, args = getopt.getopt(
-            sys.argv[1:],
-            "p:conf:e:d",
-            ["port=", "config=", 'encoding=', 'debug'],
-        )
-    except:
-        print("Usage: server.py -p <port> -c")
-        sys.exit(2)
+    _opts = RunTool.get_kv_opts()
 
     # 获取配置信息值
-    _port = None  # 指定服务端口
-    _client = True  # 是否启动客户端(测试应用)
-    _config = None  # 指定配置文件
-    _encoding = 'utf-8'  # 配置文件编码
-    _debug = True  # 是否debug模式
-    for opt_name, opt_value in opts:
-        if opt_name in ("-p", "--port"):
-            _port = int(opt_value)
-        elif opt_name in ("-conf", "--config"):
-            _config = opt_value
-        elif opt_name in ("-e", "--encoding"):
-            _config = opt_value
-        elif opt_name in ("-d", "--debug"):
-            _debug = True
+    _port = _opts.get('port', None)  # 指定服务端口
+    if _port is not None:
+        _port = int(_port)
+    _config = _opts.get('config', None)   # 指定配置文件
+    _encoding = _opts.get('encoding', 'utf-8')  # 配置文件编码
+    _debug = (_opts.get('encoding', 'true') == 'true')  # 是否debug模式
 
     # 获取配置文件信息
     _execute_path = os.path.realpath(FileTool.get_file_path(__file__))

@@ -47,9 +47,9 @@ class QA(object):
     """
 
     def __init__(self, qa_manager: QAManager, nlp: NLP, execute_path: str, plugins: dict = {},
-                 qa_config: dict = {}, debug: bool = False):
+                 qa_config: dict = {}, logger=None):
         # 基础参数
-        self.debug = debug  # 是否启动debug
+        self.logger = logger  # 日志对象
         self.qa_manager = qa_manager  # 问答数据管理
         self.nlp = nlp  # Nlp自然语言处理支持
         self.execute_path = execute_path  # 执行路径
@@ -119,10 +119,8 @@ class QA(object):
             'cache': dict(),
             'context_cache': dict(),
         }
-        if self.debug:
-            print('QA.generate_session generate session[%s]: %s' % (
-                _session_id, str(self.sessions[_session_id])
-            ))
+
+        self._log_debug('generate session[%s]: %s' % (_session_id, str(self.sessions[_session_id])))
         return _session_id
 
     def update_session_info(self, session_id: str, info: dict):
@@ -138,10 +136,7 @@ class QA(object):
 
         self.sessions[session_id]['info'].update(info)
 
-        if self.debug:
-            print('QA.update_session_info update session[%s]: %s' % (
-                session_id, str(self.sessions[session_id])
-            ))
+        self._log_debug('update session[%s]: %s' % (session_id, str(self.sessions[session_id])))
 
     def delete_session(self, session_id: str):
         """
@@ -150,10 +145,8 @@ class QA(object):
         @param {str} session_id - session id
         """
         _session = self.sessions.pop(session_id, None)
-        if self.debug:
-            print('QA.delete_session delete session[%s]: %s' % (
-                session_id, str(_session)
-            ))
+
+        self._log_debug('delete session[%s]: %s' % (session_id, str(_session)))
 
     #############################
     # 服务端上下文操作
@@ -179,6 +172,7 @@ class QA(object):
         """
         self.sessions[session_id]['context'].clear()  # 清除所有上下文
         self.sessions[session_id]['context']['options'] = options
+        self._log_debug('Session[%s] add options context: %s' % (session_id, str(options)))
 
     def add_ask_context(self, session_id: str, ask_info: dict):
         """
@@ -201,6 +195,7 @@ class QA(object):
         ask_info.setdefault('context_id', self.generate_context_id())
         self.sessions[session_id]['context'].clear()  # 清除所有上下文
         self.sessions[session_id]['context']['ask'] = ask_info
+        self._log_debug('Session[%s] add ask context: %s' % (session_id, str(ask_info)))
 
     def add_cache(self, session_id: str, key: str, value, context_id: str = None):
         """
@@ -219,6 +214,8 @@ class QA(object):
                 self.sessions[session_id]['context_cache'].clear()
                 self.sessions[session_id]['context_cache'][context_id] = dict()
             self.sessions[session_id]['context_cache'][context_id][key] = value
+        self._log_debug('Session[%s] context[%s] add cache %s[%s]' %
+                        (session_id, context_id, key, str(value)))
 
     def del_cache(self, session_id: str, key: str, context_id: str = None):
         """
@@ -235,6 +232,7 @@ class QA(object):
             if context_id in self.sessions[session_id]['context_cache'].keys():
                 if key in self.sessions[session_id]['context_cache'][context_id].keys():
                     del self.sessions[session_id]['context_cache'][context_id][key]
+        self._log_debug('Session[%s] context[%s] del cache %s' % (session_id, context_id, key))
 
     def get_cache_value(self, session_id: str, key: str, default=None, context_id: str = None):
         """
@@ -247,12 +245,16 @@ class QA(object):
 
         @returns {object} - 返回缓存值
         """
+
         if context_id is None:
-            return self.sessions[session_id]['cache'].get(key, default)
+            _value = self.sessions[session_id]['cache'].get(key, default)
         else:
-            return (self.sessions[session_id]['context_cache']
-                    .get(context_id, {})
-                    .get(key, default))
+            _value = (self.sessions[session_id]['context_cache']
+                      .get(context_id, {})
+                      .get(key, default))
+        self._log_debug('Session[%s] context[%s] get cache %s[%s]' %
+                        (session_id, context_id, key, str(_value)))
+        return _value
 
     def update_cache_dict(self, session_id: str, info: dict, context_id: str = None):
         """
@@ -269,6 +271,8 @@ class QA(object):
                 self.sessions[session_id]['context_cache'].clear()
                 self.sessions[session_id]['context_cache'][context_id] = dict()
             self.sessions[session_id]['context_cache'][context_id].update(info)
+        self._log_debug('Session[%s] context[%s] update cache dict: %s' %
+                        (session_id, context_id, info))
 
     def get_cache_dict(self, session_id: str, default=None, context_id: str = None) -> dict:
         """
@@ -281,12 +285,17 @@ class QA(object):
         @returns {dict} - 返回缓存字典
         """
         if context_id is None:
-            return self.sessions[session_id]['cache']
+            _dict = self.sessions[session_id]['cache']
         else:
             if context_id not in self.sessions[session_id]['context_cache'].keys():
-                return default
+                _dict = default
             else:
-                return self.sessions[session_id]['context_cache'][context_id]
+                _dict = self.sessions[session_id]['context_cache'][context_id]
+
+        self._log_debug('Session[%s] context[%s] get cache dict: %s' %
+                        (session_id, context_id, _dict))
+
+        return _dict
 
     #############################
     # 公共问答处理
@@ -495,10 +504,9 @@ class QA(object):
                 for _session_id in _del_list:
                     self.delete_session(_session_id)
 
-                if self.debug:
-                    print('QA._session_overtime_thread_fun del overtime session: %s' % str(_del_list))
+                self._log_debug('del overtime session: %s' % str(_del_list))
             except:
-                print('QA._session_overtime_thread_fun run exception: %s' % traceback.format_exc())
+                self._log_debug('run exception: %s' % traceback.format_exc())
 
             # 等待
             time.sleep(self.session_checktime)
@@ -903,9 +911,7 @@ class QA(object):
                 )
         else:
             # 不支持的处理模式
-            if self.debug:
-                print(
-                    'QA._get_match_one_answer error: not support answer type [%s]!' % _answer.a_type)
+            self._log_debug('not support answer type [%s]!' % _answer.a_type)
 
             # 视为没有找到问题
             _match_list = self._get_no_match_answer(session_id, collection)
@@ -957,6 +963,45 @@ class QA(object):
         # 返回结果
         return _answers
 
+    #############################
+    # 日志输出相关函数
+    #############################
+    def _log_info(self, msg: str, *args, **kwargs):
+        """
+        输出info日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.info(msg, *args, **kwargs)
+
+    def _log_debug(self, msg: str, *args, **kwargs):
+        """
+        输出debug日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.debug(msg, *args, **kwargs)
+
+    def _log_error(self, msg: str, *args, **kwargs):
+        """
+        输出error日志
+
+        @param {str} msg - 要输出的日志
+        """
+        if self.logger:
+            if 'extra' not in kwargs:
+                kwargs['extra'] = {'callFunLevel': 2}
+
+            self.logger.error(msg, *args, **kwargs)
+
 
 if __name__ == '__main__':
     # 当程序自己独立运行时执行的操作
@@ -965,5 +1010,3 @@ if __name__ == '__main__':
            '作者：%s\n'
            '发布日期：%s\n'
            '版本：%s' % (__MOUDLE__, __DESCRIPT__, __AUTHOR__, __PUBLISH__, __VERSION__)))
-
-    print('134.'.isdigit())

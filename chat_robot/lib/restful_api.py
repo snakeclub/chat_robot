@@ -16,6 +16,9 @@ import os
 import sys
 import inspect
 import traceback
+import uuid
+import datetime
+from functools import wraps
 from flask import Flask, request, jsonify
 from werkzeug.routing import Rule
 from HiveNetLib.base_tools.run_tool import RunTool
@@ -83,12 +86,45 @@ class FlaskTool(object):
 
                     app.view_functions[_endpoint] = _value
 
+    @classmethod
+    def log(cls, func):
+        """
+        登记日志的修饰符
+        """
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            _fun_name = func.__name__
+            _start_time = datetime.datetime.now()
+            _qa: QA = RunTool.get_global_var('QA_LOADER').qa
+            _IP = request.remote_addr
+            _trace_id = str(uuid.uuid1())
+            _log_str = '[API-FUN:%s][IP:%s][INF-RECV][TRACE-API:%s]%s %s\n%s%s' % (
+                _fun_name, _IP, _trace_id, request.method, request.path,
+                str(request.headers), str(request.data, encoding='utf-8')
+            )
+            if _qa.logger:
+                _qa.logger.debug(_log_str, extra={'callFunLevel': 1})
+
+            # 执行函数
+            _ret = func(*args, **kwargs)
+
+            _log_str = '[API-FUN:%s][IP:%s][INF-RET][TRACE-API:%s][USE:%s]%s%s' % (
+                _fun_name, _IP, _trace_id, str(
+                    (datetime.datetime.now() - _start_time).total_seconds()),
+                str(_ret.headers), str(_ret.data, encoding='utf-8')
+            )
+            if _qa.logger:
+                _qa.logger.debug(_log_str, extra={'callFunLevel': 1})
+            return _ret
+        return wrapper
+
 
 class Qa(object):
     """
     Qa问答服务
     """
     @classmethod
+    @FlaskTool.log
     def GetSessionId(cls, methods=['POST']):
         """
         获取用户Session并上传用户信息
@@ -106,8 +142,8 @@ class Qa(object):
             session_id : 返回的session id
         """
         # 创建session并存入信息
+        _qa: QA = RunTool.get_global_var('QA_LOADER').qa
         try:
-            _qa: QA = RunTool.get_global_var('QA_LOADER').qa
             _session_id = _qa.generate_session(request.json)
             _ret_json = {
                 'status': '00000',
@@ -124,6 +160,7 @@ class Qa(object):
         return jsonify(_ret_json)
 
     @classmethod
+    @FlaskTool.log
     def SearchAnswer(cls, methods=['POST']):
         """
         获取问题答案
@@ -211,6 +248,7 @@ class QaDataManager(object):
     #
     #############################
     @classmethod
+    @FlaskTool.log
     def Test(cls, a: str, b: int, ver: str = '1.5', methods=['GET']):
         """
         测试类
