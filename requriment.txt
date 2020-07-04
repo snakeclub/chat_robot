@@ -1,0 +1,12 @@
+pymilvus==0.2.13
+flask-cors
+flask
+flask_restful
+HiveNetLib>=0.8.2
+PyMySQL
+peewee
+bert-serving-client
+numpy
+pandas
+jieba
+paddlepaddle-tiny==1.6.1

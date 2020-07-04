@@ -58,8 +58,8 @@
         <use_nlp type="bool">true</use_nlp>
         <session_overtime type="float">300.0</session_overtime>
         <session_checktime type="float">60.0</session_checktime>
-        <match_distance type="float">0.9</match_distance>
-        <multiple_distance type="float">0.8</multiple_distance>
+        <match_distance type="float">0.94</match_distance>
+        <multiple_distance type="float">0.90</multiple_distance>
         <multiple_in_collection type="int">3</multiple_in_collection>
         <nprobe type="int">64</nprobe>
         <no_answer_milvus_id type="int">0</no_answer_milvus_id>
