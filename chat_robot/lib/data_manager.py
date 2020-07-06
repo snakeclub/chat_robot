@@ -658,10 +658,15 @@ class QAManager(object):
         if _df is not None:
             for _index, _row in _df.iterrows():
                 # 逐行添加分类集, _index为行，_row为数据集
-                self._add_collection(
-                    _row['collection'], milvus,
-                    order_num=_row['order_num'], remark=_row['remark']
-                )
+                try:
+                    self._add_collection(
+                        _row['collection'], milvus,
+                        order_num=_row['order_num'], remark=_row['remark']
+                    )
+                except:
+                    self._log_error('import collection [%s] [%s] error: %s' % (
+                        _row['collection'], _row['remark'], traceback.format_exc()
+                    ))
 
             self._log_debug('imported collection: %s' % str(_df))
 
@@ -723,27 +728,32 @@ class QAManager(object):
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加标准问题, _index为行，_row为数据集
-                    _partition = _row['partition'] if str(
-                        _row['partition']) != 'nan' and _row['partition'] != '' else None
+                    try:
+                        _partition = _row['partition'] if str(
+                            _row['partition']) != 'nan' and _row['partition'] != '' else None
 
-                    if str(_row['milvus_id']) == 'nan':
-                        _milvus_id = self._add_milvus_question(
-                            _question_vectors[_index], _row['collection'],
-                            _partition, milvus
+                        if str(_row['milvus_id']) == 'nan':
+                            _milvus_id = self._add_milvus_question(
+                                _question_vectors[_index], _row['collection'],
+                                _partition, milvus
+                            )
+                        else:
+                            _milvus_id = int(_row['milvus_id'])
+
+                        # 插入标准问题
+                        _std_q = StdQuestion.create(
+                            q_type=_row['q_type'], milvus_id=_milvus_id, collection=_row['collection'],
+                            partition=('' if _partition is None else _partition),
+                            question=_row['question']
                         )
-                    else:
-                        _milvus_id = int(_row['milvus_id'])
 
-                    # 插入标准问题
-                    _std_q = StdQuestion.create(
-                        q_type=_row['q_type'], milvus_id=_milvus_id, collection=_row['collection'],
-                        partition=('' if _partition is None else _partition),
-                        question=_row['question']
-                    )
-
-                    # 插入映射关系
-                    if str(_row['id']) != 'nan':
-                        _std_question_id_mapping[_row['id']] = _std_q.id
+                        # 插入映射关系
+                        if str(_row['id']) != 'nan':
+                            _std_question_id_mapping[_row['id']] = _std_q.id
+                    except:
+                        self._log_error('imported std_question [id: %s] [%s] error: %s' % (
+                            str(_row['id']), _row['question'], traceback.format_exc()
+                        ))
 
                 self._log_debug('imported std_question[%d]: %s' % (_skiprows, str(_df)))
 
@@ -809,17 +819,22 @@ class QAManager(object):
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加标准问题答案, _index为行，_row为数据集
-                    _std_question_id = std_question_id_mapping.get(
-                        _row['std_question_id'], _row['std_question_id']
-                    )
-                    _type_param = re.sub(
-                        r'\{\$.+?\$\}', replace_var_fun, str(_row['type_param']), re.M
-                    )
-                    Answer.create(
-                        std_question_id=_std_question_id, a_type=_row['a_type'],
-                        type_param=_type_param, replace_pre_def=_row['replace_pre_def'],
-                        answer=_row['answer']
-                    )
+                    try:
+                        _std_question_id = std_question_id_mapping.get(
+                            _row['std_question_id'], _row['std_question_id']
+                        )
+                        _type_param = re.sub(
+                            r'\{\$.+?\$\}', replace_var_fun, str(_row['type_param']), re.M
+                        )
+                        Answer.create(
+                            std_question_id=_std_question_id, a_type=_row['a_type'],
+                            type_param=_type_param, replace_pre_def=_row['replace_pre_def'],
+                            answer=_row['answer']
+                        )
+                    except:
+                        self._log_error('imported answer [id: %s] [%s] error: %s' % (
+                            str(_row['std_question_id']), _row['answer'], traceback.format_exc()
+                        ))
 
                 self._log_debug('imported answers[%d]: %s' % (_skiprows, str(_df)))
 
@@ -867,21 +882,26 @@ class QAManager(object):
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加扩展问题, _index为行，_row为数据集
-                    _std_question_id = std_question_id_mapping.get(
-                        _row['std_question_id'], _row['std_question_id']
-                    )
-                    _std_q = StdQuestion.get_or_none(StdQuestion.id == _std_question_id)
+                    try:
+                        _std_question_id = std_question_id_mapping.get(
+                            _row['std_question_id'], _row['std_question_id']
+                        )
+                        _std_q = StdQuestion.get_or_none(StdQuestion.id == _std_question_id)
 
-                    _milvus_id = self._add_milvus_question(
-                        _question_vectors[_index], _std_q.collection,
-                        None if _std_q.partition == '' else _std_q.partition,
-                        milvus
-                    )
+                        _milvus_id = self._add_milvus_question(
+                            _question_vectors[_index], _std_q.collection,
+                            None if _std_q.partition == '' else _std_q.partition,
+                            milvus
+                        )
 
-                    ExtQuestion.create(
-                        milvus_id=_milvus_id, std_question_id=_std_question_id,
-                        question=_row['question']
-                    )
+                        ExtQuestion.create(
+                            milvus_id=_milvus_id, std_question_id=_std_question_id,
+                            question=_row['question']
+                        )
+                    except:
+                        self._log_error('imported ext_question [id: %s] [%s] error: %s' % (
+                            str(_row['std_question_id']), _row['question'], traceback.format_exc()
+                        ))
 
                 self._log_debug('imported ext_questions[%d]: %s' % (_skiprows, str(_df)))
 
@@ -906,10 +926,15 @@ class QAManager(object):
         if _df is not None:
             for _index, _row in _df.iterrows():
                 # 逐行添加, _index为行，_row为数据集
-                CommonPara.create(
-                    para_name=_row['para_name'], para_value=_row['para_value'],
-                    remark=_row['remark']
-                )
+                try:
+                    CommonPara.create(
+                        para_name=_row['para_name'], para_value=_row['para_value'],
+                        remark=_row['remark']
+                    )
+                except:
+                    self._log_error('imported common_para [%s] error: %s' % (
+                        _row['para_name'], traceback.format_exc()
+                    ))
 
             # 导入后重新加载到内存
             self.load_common_para()
@@ -937,14 +962,19 @@ class QAManager(object):
         if _df is not None:
             for _index, _row in _df.iterrows():
                 # 逐行添加, _index为行，_row为数据集
-                NlpSureJudgeDict.create(
-                    word=_row['word'], sign=_row['sign'], word_class=_row['word_class']
-                )
+                try:
+                    NlpSureJudgeDict.create(
+                        word=_row['word'], sign=_row['sign'], word_class=_row['word_class']
+                    )
+                except:
+                    self._log_error('imported nlp_sure_judge_dict [%s] [%s] [%s] error: %s' % (
+                        _row['word'], _row['sign'], _row['word_class'], traceback.format_exc()
+                    ))
 
             # 导入后重新加载到内存
             self.load_nlp_sure_judge_dict()
 
-            self._log_debug('imported nlp_purpos_config_dict: %s' % str(_df))
+            self._log_debug('imported nlp_sure_judge_dict: %s' % str(_df))
 
     def _import_nlp_purpos_config_dict_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient,
                                               std_question_id_mapping: dict):
@@ -1005,37 +1035,43 @@ class QAManager(object):
 
                 for _index, _row in _df.iterrows():
                     # 逐行添加标准问题答案, _index为行，_row为数据集
-                    _collection = _row['collection'] if str(
-                        _row['collection']) != 'nan' and _row['collection'] != '' else None
+                    try:
+                        _collection = _row['collection'] if str(
+                            _row['collection']) != 'nan' and _row['collection'] != '' else None
 
-                    _partition = _row['partition'] if str(
-                        _row['partition']) != 'nan' and _row['partition'] != '' else None
+                        _partition = _row['partition'] if str(
+                            _row['partition']) != 'nan' and _row['partition'] != '' else None
 
-                    _std_question_id = std_question_id_mapping.get(
-                        _row['std_question_id'], _row['std_question_id']
-                    )
+                        _std_question_id = std_question_id_mapping.get(
+                            _row['std_question_id'], _row['std_question_id']
+                        )
 
-                    _info = _row['info'] if str(
-                        _row['info']) != 'nan' and _row['info'] != '' else '[]'
-                    _info = re.sub(
-                        r'\{\$.+?\$\}', replace_var_fun, _info, re.M
-                    )
+                        _info = _row['info'] if str(
+                            _row['info']) != 'nan' and _row['info'] != '' else '[]'
+                        _info = re.sub(
+                            r'\{\$.+?\$\}', replace_var_fun, _info, re.M
+                        )
 
-                    _check = _row['check'] if str(
-                        _row['check']) != 'nan' and _row['check'] != '' else '[]'
-                    _check = re.sub(
-                        r'\{\$.+?\$\}', replace_var_fun, _check, re.M
-                    )
+                        _check = _row['check'] if str(
+                            _row['check']) != 'nan' and _row['check'] != '' else '[]'
+                        _check = re.sub(
+                            r'\{\$.+?\$\}', replace_var_fun, _check, re.M
+                        )
 
-                    NlpPurposConfigDict.create(
-                        action=_row['action'],
-                        collection=_collection,
-                        partition=('' if _partition is None else _partition),
-                        std_question_id=_std_question_id,
-                        order_num=_row['order_num'],
-                        match_words=_row['match_words'],
-                        info=_info, check=_check
-                    )
+                        NlpPurposConfigDict.create(
+                            action=_row['action'],
+                            collection=_collection,
+                            partition=('' if _partition is None else _partition),
+                            std_question_id=_std_question_id,
+                            order_num=_row['order_num'],
+                            match_words=_row['match_words'],
+                            info=_info, check=_check
+                        )
+                    except:
+                        self._log_error('imported nlp_purpos_config_dict [%s][%s][%s] error: %s' % (
+                            str(_row['collection']), str(_row['partition']), _row['action'],
+                            traceback.format_exc()
+                        ))
 
                 # 加载到内存
                 self.load_nlp_purpos_config_dict()
