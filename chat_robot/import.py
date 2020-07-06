@@ -60,7 +60,7 @@ if __name__ == '__main__':
     _qa_manager = QAManager(
         _server_config['answerdb'], _server_config['milvus'], _server_config['bert_client'],
         logger=_logger, excel_batch_num=_server_config['excel_batch_num'],
-        excel_engine=_server_config['excel_engine']
+        excel_engine=_server_config['excel_engine'], load_para=False
     )
 
     # 执行操作

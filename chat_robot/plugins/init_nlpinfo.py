@@ -8,8 +8,8 @@
 
 """
 初始化的意图信息获取函数
-@module init_info
-@file init_info.py
+@module init_nlpinfo
+@file init_nlpinfo.py
 """
 
 import os
@@ -22,7 +22,7 @@ from chat_robot.lib.qa import QA
 from chat_robot.lib.data_manager import QAManager
 
 
-__MOUDLE__ = 'init_info'  # 模块名
+__MOUDLE__ = 'init_nlpinfo'  # 模块名
 __DESCRIPT__ = u'初始化的意图信息获取函数'  # 模块描述
 __VERSION__ = '0.1.0'  # 版本
 __AUTHOR__ = u'黎慧剑'  # 作者
@@ -38,10 +38,10 @@ class InitInfo(object):
         """
         必须定义的函数，返回插件类型
         """
-        return 'info'
+        return 'nlpinfo'
 
     @classmethod
-    def get_by_question(cls, question: str, words: list, action: str, collection: str,
+    def get_by_question(cls, question: str, words: list, action: str, match_word: str, collection: str,
                         partition: str, std_question_id: int, **kwargs):
         """
         通用根据问题本身信息函数
@@ -49,6 +49,7 @@ class InitInfo(object):
         @param {str} question - 完整的问题句子
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
+        @param {str} match_word - 匹配上的词
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id
@@ -90,7 +91,7 @@ class InitInfo(object):
         return _info
 
     @classmethod
-    def get_by_words(cls, question: str, words: list, action: str, collection: str,
+    def get_by_words(cls, question: str, words: list, action: str, match_word: str, collection: str,
                      partition: str, std_question_id: int, **kwargs):
         """
         通用获取词信息函数
@@ -98,6 +99,7 @@ class InitInfo(object):
         @param {str} question - 完整的问题句子
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
+        @param {str} match_word - 匹配上的词
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id

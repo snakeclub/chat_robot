@@ -49,98 +49,98 @@ _session_id = _qa.generate_session({
 })
 
 # 测试问答
-_question = '你好'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '你好'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '您好'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '您好'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '你好啊'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '你好啊'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '这个问题应该不存在才对啊'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '这个问题应该不存在才对啊'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[选项]我想学银行业务'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[选项]我想学银行业务'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '4'  # 超过选项范围，继续提问
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '4'  # 超过选项范围，继续提问
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '2'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '2'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '1'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '1'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[选项]我想学银行业务'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[选项]我想学银行业务'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '你叫什么名字'  # 选项中输入其他问题，跳出选项上下文
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '你叫什么名字'  # 选项中输入其他问题，跳出选项上下文
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '1'  # 已跳出选项不再匹配
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '1'  # 已跳出选项不再匹配
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[选项]我想学银行业务'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[选项]我想学银行业务'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '3'  # 二级选项
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '3'  # 二级选项
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '1'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '1'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[未精确匹配]90%以上'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[未精确匹配]90%以上'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '1'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '1'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[job示例]获取随机答案'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[job示例]获取随机答案'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[job示例]获取随机答案'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[job示例]获取随机答案'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '不应该匹配到的随机答案3'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '不应该匹配到的随机答案3'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[ask示例]问我的名字'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[ask示例]问我的名字'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '黎慧剑'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '黎慧剑'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[ask示例]重复提问'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[ask示例]重复提问'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '继续'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '继续'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '1'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '1'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[ask示例1]单问题多轮提问'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[ask示例1]单问题多轮提问'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '18岁'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '18岁'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '男'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '男'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '[ask示例2]多个问题多轮提问'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '[ask示例2]多个问题多轮提问'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '广州'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '广州'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '搬砖'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '搬砖'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '篮球'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+# _question = '篮球'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
 _question = '我要寄信给广州的黎慧剑'
 print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
@@ -161,4 +161,10 @@ _question = '我要转账给黎慧剑的账户315元'
 print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
 _question = '不是'
+print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+_question = '广州的天气'
+print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+_question = '今天天气真好'
 print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))

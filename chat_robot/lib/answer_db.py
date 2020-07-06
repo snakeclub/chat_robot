@@ -170,8 +170,11 @@ class NlpPurposConfigDict(BaseModel):
     partition = pw.CharField(default='')  # 搜索问题所属场景
     std_question_id = pw.BigIntegerField()  # 意图对应的标准问题ID
     order_num = pw.IntegerField()  # 匹配排序，越大排序越高
+    match_words = pw.CharField(max_length=4000, default='[]')  # 可以匹配意图的词组
     # 意图信息的获取处理函数配置，格式为 [class_name, fun_name, {para_dict}]
     info = pw.CharField(max_length=4000, default='[]')
+    # 意图检测函数配置，可以通过该配置剔除一些特殊情况，格式为[class_name, fun_name, {para_dict}]
+    check = pw.CharField(max_length=4000, default='[]')
 
     class Meta:
         # 定义数据库表名

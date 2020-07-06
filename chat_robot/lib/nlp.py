@@ -200,12 +200,13 @@ class NLP(object):
 
             # 匹配处理
             if (_flag == 'x' and _word != ' ') or _word in ('.'):
-                for _action, _collection, _partition in _matched_in_s:
+                for _action, _match_word, _collection, _partition in _matched_in_s:
                     # 处理意图列表
                     _config = _purpose_config_dict[_collection][_partition][_action]
                     _purpose.append(
                         {
                             'action': _action, 'collection': _collection, 'partition': _partition,
+                            'match_word': _match_word,
                             'is_sure': self._judge_is_sure(_words_list[_s_start: len(_words_list)]),
                             'order_num': _config['order_num'],
                             'std_question_id': _config['std_question_id'],
@@ -217,14 +218,14 @@ class NLP(object):
                 _matched_in_s.clear()  # 清空当前语句的匹配数据
             else:
                 # 使用词尝试匹配动作
-                _action, _collection, _partition = self._match_purpose(
+                _action, _match_word, _collection, _partition = self._match_purpose(
                     _word, collections, partition)
                 if _action != '':
                     # 匹配到动作
                     _match_str = '%s,%s,%s' % (_action, str(_collection), str(_partition))
                     if _match_str not in _matched_list:
                         _matched_list.append(_match_str)  # 登记避免重复
-                        _matched_in_s.append([_action, _collection, _partition])
+                        _matched_in_s.append([_action, _match_word, _collection, _partition])
 
             # 进入下一轮循环
             if _next_word == '':
@@ -236,25 +237,49 @@ class NLP(object):
 
         # 重新排序
         _purpose = sorted(_purpose, key=lambda x: x['order_num'], reverse=True)
-        if not is_multiple:
-            # 非多匹配返回，只要排第一的记录
-            _purpose = _purpose[0:1]
 
-        # 获取意图特定信息
+        # 进行意图的检查
+        _matched_purpose = []
         for _pitem in _purpose:
             _config = _purpose_config_dict[_pitem['collection']
                                            ][_pitem['partition']][_pitem['action']]
+            if len(_config['check']) > 0:
+                # 需要进行检查
+                _check_fun = self.plugins['nlpcheck'][_config['check'][0]][_config['check'][1]]
+                if not _check_fun(
+                    question, _words_list,
+                    _pitem['action'], _pitem['match_word'], _pitem['collection'], _pitem['partition'],
+                    _config['std_question_id'], **_config['check'][2]
+                ):
+                    # 检查未通过，继续检查下一个
+                    continue
+                else:
+                    _matched_purpose.append(_pitem)
+            else:
+                # 没有配置检查函数，视为检查通过
+                _matched_purpose.append(_pitem)
+
+            # 看看是否需要处理下一个
+            if not is_multiple and len(_matched_purpose) > 0:
+                # 只匹配第一个即可
+                break
+
+        # 获取意图特定信息
+        for _pitem in _matched_purpose:
+            _config = _purpose_config_dict[_pitem['collection']
+                                           ][_pitem['partition']][_pitem['action']]
+
             if len(_config['info']) > 0:
-                _get_info_fun = self.plugins['info'][_config['info'][0]][_config['info'][1]]
+                _get_info_fun = self.plugins['nlpinfo'][_config['info'][0]][_config['info'][1]]
                 _info_dict = _get_info_fun(
                     question, _words_list,
-                    _pitem['action'], _pitem['collection'], _pitem['partition'],
+                    _pitem['action'], _pitem['match_word'], _pitem['collection'], _pitem['partition'],
                     _config['std_question_id'], **_config['info'][2]
                 )
                 _pitem['info'].update(_info_dict)
 
-        self._log_debug('question: %s\n%s' % (question, str(_purpose)))
-        return _purpose
+        self._log_debug('question: %s\n%s' % (question, str(_matched_purpose)))
+        return _matched_purpose
 
     #############################
     # 内部函数
@@ -305,7 +330,7 @@ class NLP(object):
         @param {list} collection=None - 指定从特定的问题分类中分析
         @param {str} partition=None - 指定从特定的问题场景中分析
 
-        @returns {str,str,str} - action, collection, partition
+        @returns {str,str, str,str} - action, word, collection, partition
         """
         # 简化逻辑处理
         _partition = partition
@@ -322,11 +347,12 @@ class NLP(object):
         for _collection in _collections:
             _collection_dict = _purpose_config_dict.get(_collection, {})
             _partition_dict = _collection_dict.get(_partition, {})
-            if word in _partition_dict.keys():
-                return word, _collection, _partition
+            for _action in _partition_dict.keys():
+                if word in _partition_dict[_action]['match_words']:
+                    return _action, word, _collection, _partition
 
         # 没有找到
-        return '', None, None
+        return '', '', None, None
 
     #############################
     # 日志输出相关函数

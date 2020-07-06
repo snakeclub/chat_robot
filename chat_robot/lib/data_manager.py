@@ -51,7 +51,7 @@ class QAManager(object):
     """
 
     def __init__(self, answer_db_para: dict, milvus_para: dict, bert_para: dict,
-                 logger=None, excel_batch_num=100, excel_engine='xlrd'):
+                 logger=None, excel_batch_num=100, excel_engine='xlrd', load_para: bool = True):
         """
         问答数据管理
 
@@ -61,11 +61,13 @@ class QAManager(object):
         @param {bool} logger=None - 日志对象
         @param {int} excel_batch_num=100 - excel导入数据时每批处理的数据记录数
         @param {string} excel_engine='xlrd' - excel导入数据使用的引擎，可以是xlrd或者openpyxl
+        @param {bool} load_para=True - 初始化时是否装载信息到内存
         """
         # 基础参数
         self.logger = logger
         self.excel_batch_num = excel_batch_num  # 处理excel时一次处理的数据量
         self.excel_engine = excel_engine  # 使用读引擎，可以是xlrd或者openpyxl
+        self.load_para = load_para
 
         # 装载数据库连接
         self.answer_db_para = copy.deepcopy(answer_db_para)
@@ -152,50 +154,55 @@ class QAManager(object):
         """
         装载common_para参数到内存
         """
-        _para_dict = dict()
-        _query = CommonPara.select(CommonPara.para_name, CommonPara.para_value)
-        for _row in _query:
-            _para_dict[_row.para_name] = _row.para_value
+        if self.load_para:
+            _para_dict = dict()
+            _query = CommonPara.select(CommonPara.para_name, CommonPara.para_value)
+            for _row in _query:
+                _para_dict[_row.para_name] = _row.para_value
 
-        # 更新内存
-        self.DATA_MANAGER_PARA['common_para'].update(_para_dict)
-        self._log_debug('Load common_para success:\n%s' % str(_para_dict))
+            # 更新内存
+            self.DATA_MANAGER_PARA['common_para'].update(_para_dict)
+            self._log_debug('Load common_para success:\n%s' % str(_para_dict))
 
     def load_nlp_sure_judge_dict(self):
         """
         加载肯定/否定判断字典
         """
-        _judge_dict = dict()
-        _query = NlpSureJudgeDict.select()
-        for _row in _query:
-            _judge_dict.setdefault(_row.sign, {})
-            _judge_dict[_row.sign].setdefault(_row.word_class, [])
-            _judge_dict[_row.sign][_row.word_class].append(_row.word)
+        if self.load_para:
+            _judge_dict = dict()
+            _query = NlpSureJudgeDict.select()
+            for _row in _query:
+                _judge_dict.setdefault(_row.sign, {})
+                _judge_dict[_row.sign].setdefault(_row.word_class, [])
+                _judge_dict[_row.sign][_row.word_class].append(_row.word)
 
-        # 添加到内存
-        self.DATA_MANAGER_PARA['nlp_sure_judge_dict'] = _judge_dict
-        self._log_debug('Load nlp_sure_judge_dict success:\n%s' % str(_judge_dict))
+            # 添加到内存
+            self.DATA_MANAGER_PARA['nlp_sure_judge_dict'] = _judge_dict
+            self._log_debug('Load nlp_sure_judge_dict success:\n%s' % str(_judge_dict))
 
     def load_nlp_purpos_config_dict(self):
         """
         加载意图匹配字典
         """
-        _pupos_config = dict()
-        _query = NlpPurposConfigDict.select()
-        for _row in _query:
-            _collection = _row.collection if _row.collection is not None and _row.collection != '' else None
-            _partition = _row.partition if _row.partition is not None and _row.partition != '' else None
-            _pupos_config.setdefault(_collection, {})
-            _pupos_config[_collection].setdefault(_partition, {})
-            _pupos_config[_collection][_partition][_row.action] = {
-                'order_num': _row.order_num,
-                'std_question_id': _row.std_question_id,
-                'info': eval('[]' if _row.info == '' else _row.info)
-            }
+        if self.load_para:
+            _pupos_config = dict()
+            _query = NlpPurposConfigDict.select().order_by(NlpPurposConfigDict.order_num.desc())
+            for _row in _query:
+                _collection = _row.collection if _row.collection is not None and _row.collection != '' else None
+                _partition = _row.partition if _row.partition is not None and _row.partition != '' else None
+                _pupos_config.setdefault(_collection, {})
+                _pupos_config[_collection].setdefault(_partition, {})
+                _pupos_config[_collection][_partition][_row.action] = {
+                    'match_words': eval('[]' if _row.match_words == '' else _row.match_words),
+                    'order_num': _row.order_num,
+                    'std_question_id': _row.std_question_id,
+                    'info': eval('[]' if _row.info == '' else _row.info),
+                    'check': eval('[]' if _row.check == '' else _row.check),
+                }
 
-        # 添加到内存
-        self.DATA_MANAGER_PARA['nlp_purpos_config_dict'] = _pupos_config
-        self._log_debug('Load nlp_purpos_config_dict success:\n%s' % str(_pupos_config))
+            # 添加到内存
+            self.DATA_MANAGER_PARA['nlp_purpos_config_dict'] = _pupos_config
+            self._log_debug('Load nlp_purpos_config_dict success:\n%s' % str(_pupos_config))
 
     def add_collection(self, collection: str, order_num: int = 0, remark: str = ''):
         """
@@ -1008,13 +1015,20 @@ class QAManager(object):
                         r'\{\$.+?\$\}', replace_var_fun, _info, re.M
                     )
 
+                    _check = _row['check'] if str(
+                        _row['check']) != 'nan' and _row['check'] != '' else '[]'
+                    _check = re.sub(
+                        r'\{\$.+?\$\}', replace_var_fun, _check, re.M
+                    )
+
                     NlpPurposConfigDict.create(
                         action=_row['action'],
                         collection=_collection,
                         partition=('' if _partition is None else _partition),
                         std_question_id=_std_question_id,
                         order_num=_row['order_num'],
-                        info=_info
+                        match_words=_row['match_words'],
+                        info=_info, check=_check
                     )
 
                 # 加载到内存

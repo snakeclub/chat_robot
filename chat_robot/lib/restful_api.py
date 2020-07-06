@@ -25,7 +25,7 @@ from HiveNetLib.base_tools.run_tool import RunTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.qa import QA
+# from chat_robot.lib.loader import QAServerLoader
 
 
 __MOUDLE__ = 'restful_api'  # 模块名
@@ -95,15 +95,15 @@ class FlaskTool(object):
         def wrapper(*args, **kwargs):
             _fun_name = func.__name__
             _start_time = datetime.datetime.now()
-            _qa: QA = RunTool.get_global_var('QA_LOADER').qa
+            _qa_loader = RunTool.get_global_var('QA_LOADER')
             _IP = request.remote_addr
             _trace_id = str(uuid.uuid1())
             _log_str = '[API-FUN:%s][IP:%s][INF-RECV][TRACE-API:%s]%s %s\n%s%s' % (
                 _fun_name, _IP, _trace_id, request.method, request.path,
                 str(request.headers), str(request.data, encoding='utf-8')
             )
-            if _qa.logger:
-                _qa.logger.debug(_log_str, extra={'callFunLevel': 1})
+            if _qa_loader.logger:
+                _qa_loader.logger.debug(_log_str, extra={'callFunLevel': 1})
 
             # 执行函数
             _ret = func(*args, **kwargs)
@@ -113,8 +113,8 @@ class FlaskTool(object):
                     (datetime.datetime.now() - _start_time).total_seconds()),
                 str(_ret.headers), str(_ret.data, encoding='utf-8')
             )
-            if _qa.logger:
-                _qa.logger.debug(_log_str, extra={'callFunLevel': 1})
+            if _qa_loader.logger:
+                _qa_loader.logger.debug(_log_str, extra={'callFunLevel': 1})
             return _ret
         return wrapper
 
@@ -142,15 +142,20 @@ class Qa(object):
             session_id : 返回的session id
         """
         # 创建session并存入信息
-        _qa: QA = RunTool.get_global_var('QA_LOADER').qa
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
         try:
-            _session_id = _qa.generate_session(request.json)
+            _session_id = _qa_loader.qa.generate_session(request.json)
             _ret_json = {
                 'status': '00000',
                 'msg': 'success',
                 'session_id': _session_id
             }
         except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
             _ret_json = {
                 'status': '20001',
                 'msg': '生成session id出现异常'
@@ -182,9 +187,8 @@ class Qa(object):
             msg : 处理状态对应的描述
             answers : 匹配答案数组
         """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
         try:
-            print(request.json)
-            _qa: QA = RunTool.get_global_var('QA_LOADER').qa
             _ret_json = {
                 'status': '00001',
                 'msg': 'success',
@@ -200,24 +204,33 @@ class Qa(object):
             if _collection == '':
                 _collection = None
 
-            _answers = _qa.quession_search(_question, _session_id, _collection)
+            _answers = _qa_loader.qa.quession_search(_question, _session_id, _collection)
 
             if len(_answers) > 1:
                 _ret_json['status'] = '00001'
 
             _ret_json['answers'] = _answers
         except FileNotFoundError:
+            if _qa_loader.logger:
+                _qa_loader.logger.debug(
+                    'Session not found: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
             _ret_json = {
                 'status': '10002',
                 'msg': 'session id 不存在'
             }
         except:
-            print(traceback.format_exc())
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
             _ret_json = {
                 'status': '20001',
                 'msg': '获取答案出现异常'
             }
-        print(_ret_json)
+
         return jsonify(_ret_json)
 
 
