@@ -420,17 +420,29 @@ class QA(object):
         # 替换函数
         def replace_var_fun(m):
             _match_str = m.group(0)
+            _value = None
             if _match_str.startswith('{$info='):
+                # 获取info的值
                 _key = _match_str[7:-2]
                 if _key in self.sessions[session_id]['info'].keys():
-                    return self.sessions[session_id]['info'][_key]
+                    _value = self.sessions[session_id]['info'][_key]
             elif _match_str.startswith('{$cache=') and context_id is not None:
+                # 获取缓存的值
                 _key = _match_str[8:-2]
                 _value = self.get_cache_value(session_id, _key, default=None, context_id=context_id)
-                if _value is not None:
-                    return _value
+            elif _match_str.startswith('{$config='):
+                # 获取qa_config的值
+                _key = _match_str[9:-2]
+                _value = self.qa_config.get(_key, None)
+            elif _match_str.startswith('{$para='):
+                # 通用参数
+                _key = _match_str[7:-2]
+                _value = self.qa_manager.DATA_MANAGER_PARA['common_para'].get(_key, None)
 
-            return _match_str
+            if _value is not None:
+                return str(_value)
+            else:
+                return _match_str
 
         # 逐行替换
         _len = len(answers)
