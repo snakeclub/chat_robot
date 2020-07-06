@@ -19,6 +19,7 @@ import math
 import time
 import json
 import re
+import traceback
 from functools import reduce
 import numpy as np
 import milvus as mv
@@ -188,17 +189,22 @@ class QAManager(object):
             _pupos_config = dict()
             _query = NlpPurposConfigDict.select().order_by(NlpPurposConfigDict.order_num.desc())
             for _row in _query:
-                _collection = _row.collection if _row.collection is not None and _row.collection != '' else None
-                _partition = _row.partition if _row.partition is not None and _row.partition != '' else None
-                _pupos_config.setdefault(_collection, {})
-                _pupos_config[_collection].setdefault(_partition, {})
-                _pupos_config[_collection][_partition][_row.action] = {
-                    'match_words': eval('[]' if _row.match_words == '' else _row.match_words),
-                    'order_num': _row.order_num,
-                    'std_question_id': _row.std_question_id,
-                    'info': eval('[]' if _row.info == '' else _row.info),
-                    'check': eval('[]' if _row.check == '' else _row.check),
-                }
+                try:
+                    _collection = _row.collection if _row.collection is not None and _row.collection != '' else None
+                    _partition = _row.partition if _row.partition is not None and _row.partition != '' else None
+                    _pupos_config.setdefault(_collection, {})
+                    _pupos_config[_collection].setdefault(_partition, {})
+                    _pupos_config[_collection][_partition][_row.action] = {
+                        'match_words': eval('[]' if _row.match_words == '' else _row.match_words),
+                        'order_num': _row.order_num,
+                        'std_question_id': _row.std_question_id,
+                        'info': eval('[]' if _row.info == '' else _row.info),
+                        'check': eval('[]' if _row.check == '' else _row.check),
+                    }
+                except:
+                    self._log_error('Deal with purpos config [%s][%s][%s] error: %s' % (
+                        str(_row.collection), str(_row.partition), _row.action, traceback.format_exc()
+                    ))
 
             # 添加到内存
             self.DATA_MANAGER_PARA['nlp_purpos_config_dict'] = _pupos_config
