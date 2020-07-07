@@ -185,10 +185,11 @@ class InitAsk(object):
         @param {QA} qa - 服务器的问答处理模块实例对象
         @param {QAManager} qa_manager - 服务器的问答数据管理实例对象
         @param {kwargs} - 扩展传入参数
-            fun {function} - 检查函数对象，格式为:
-                fun(question, **kwargs):
-                    retrun bool, [str, ...]  # 是否通过, 提示信息
-            param {dict} - 调用检查函数的扩展参数
+            fun {list} - 检查函数参数，注意该函数必须通过plugins方式导入
+                ['plugin_type', 'class_name', 'fun_name', {param_dict}]
+                    函数定义如下：
+                    fun(question, **kwargs):
+                        retrun bool, [str, ...]  # 是否通过, 提示信息
 
         @param {str, object} - 按照不同的处理要求返回内容
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
@@ -196,12 +197,12 @@ class InitAsk(object):
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
             默认为'again'
         """
-        _fun = kwargs.get('fun', None)
-        _param = kwargs.get('param', {})
-
-        if not callable(_fun):
-            # 不可执行函数
+        _fun_para = kwargs.get('fun', [])
+        if len(_fun_para) < 4:
             return 'answer', ['Sorry, error answer setting!']
+
+        _fun = qa.plugins[_fun_para[0]][_fun_para[1]][_fun_para[2]]
+        _param = _fun_para[3]
 
         _param.update(
             {

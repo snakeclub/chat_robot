@@ -25,6 +25,7 @@ import traceback
 import inspect
 import milvus as mv
 import pandas as pd
+import redis
 from HiveNetLib.base_tools.file_tool import FileTool
 from HiveNetLib.base_tools.import_tool import ImportTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
@@ -47,7 +48,7 @@ class QA(object):
     """
 
     def __init__(self, qa_manager: QAManager, nlp: NLP, execute_path: str, plugins: dict = {},
-                 qa_config: dict = {}, logger=None):
+                 qa_config: dict = {}, redis_config: dict = {}, logger=None):
         # 基础参数
         self.logger = logger  # 日志对象
         self.qa_manager = qa_manager  # 问答数据管理
@@ -76,6 +77,20 @@ class QA(object):
 
         # 插件plugins函数字典，格式为{'type':{'class_name': {'fun_name': fun, }, },}
         self.plugins = plugins
+
+        # Redis缓存
+        self.use_redis = qa_config.get('use_redis', False)
+        if self.use_redis:
+            # 创建连接池
+            _redis_connect_para = redis_config.get('connection', {})
+            _redis_connect_para['max_connections'] = redis_config.get('pool_size', None)
+            _redis_connect_para['decode_responses'] = True  # 这个必须设置为True，确保取到的值是解码后的值
+            self.redis_pool = redis.ConnectionPool(
+                **_redis_connect_para
+            )
+
+            # 删除无效的session
+            self.delete_unuse_sessions()
 
         # 客户连接session管理, key为session_id，value也是一个dict:
         #   last_time : 最近访问时间，用于判断超时清理缓存
@@ -112,7 +127,7 @@ class QA(object):
         @returns {str} - session_id
         """
         _session_id = str(uuid.uuid1())
-        self.sessions[_session_id] = {
+        _session_dict = {
             'last_time': datetime.datetime.now(),
             'info': copy.deepcopy(info),
             'context': dict(),
@@ -120,8 +135,61 @@ class QA(object):
             'context_cache': dict(),
         }
 
-        self._log_debug('generate session[%s]: %s' % (_session_id, str(self.sessions[_session_id])))
+        if self.use_redis:
+            # 使用Redis作为缓存
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                # 添加到session清单
+                _redis.hset(
+                    'chat_robot:session:list', key=_session_id,
+                    value='datetime:%s' % _session_dict['last_time'].strftime('%Y-%m-%d %H:%M:%S')
+                )
+
+                # 存入字典
+                self._add_redis_dict(
+                    'chat_robot:session:%s' % _session_id,
+                    _session_dict, _redis
+                )
+        else:
+            # 直接添加到字典中
+            self.sessions[_session_id] = _session_dict
+
+        self._log_debug('generate session[%s]: %s' % (_session_id, str(_session_dict)))
         return _session_id
+
+    def check_session_exists(self, session_id: str) -> bool:
+        """
+        检查session是否存在
+
+        @param {str} session_id - session id
+
+        @returns {bool} - 是否存在
+        """
+        if session_id is None:
+            return False
+
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                return _redis.hexists(
+                    'chat_robot:session:list',
+                    session_id
+                )
+        else:
+            return session_id in self.sessions.keys()
+
+    def update_last_time(self, session_id: str):
+        """
+        更新上次访问时间
+
+        @param {str} session_id - session id
+        """
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                self._add_redis_dict_value(
+                    'chat_robot:session:list', session_id, datetime.datetime.now(),
+                    _redis
+                )
+        else:
+            self.sessions[session_id]['last_time'] = datetime.datetime.now()
 
     def update_session_info(self, session_id: str, info: dict):
         """
@@ -131,12 +199,19 @@ class QA(object):
         @param {str} session_id - session id
         @param {dict} info - 要更新的信息字典
         """
-        if session_id not in self.sessions.keys():
+        if not self.check_session_exists(session_id):
             raise AttributeError('session_id [%s] not exists!')
 
-        self.sessions[session_id]['info'].update(info)
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                self._add_redis_dict(
+                    'chat_robot:session:%s:info' % session_id,
+                    info, _redis
+                )
+        else:
+            self.sessions[session_id]['info'].update(info)
 
-        self._log_debug('update session[%s]: %s' % (session_id, str(self.sessions[session_id])))
+        self._log_debug('update session[%s]: %s' % (session_id, str(info)))
 
     def delete_session(self, session_id: str):
         """
@@ -144,13 +219,82 @@ class QA(object):
 
         @param {str} session_id - session id
         """
-        _session = self.sessions.pop(session_id, None)
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                # 先删除字典清单
+                _redis.hdel('chat_robot:session:list', *(session_id,))
 
-        self._log_debug('delete session[%s]: %s' % (session_id, str(_session)))
+                # 删除实际字典
+                self._del_redis_dict(
+                    'chat_robot:session:%s' % session_id, _redis
+                )
+        else:
+            self.sessions.pop(session_id, None)
+
+        self._log_debug('delete session[%s]' % (session_id,))
+
+    def get_info_dict(self, session_id: str) -> dict:
+        """
+        获取info信息字典
+
+        @param {str} session_id - session id
+
+        @returns {dict} - 返回的字典
+        """
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                return self._get_redis_dict(
+                    'chat_robot:session:%s:info' % session_id, _redis
+                )
+        else:
+            return self.sessions[session_id]['info']
+
+    def get_info_by_key(self, session_id: str, key: str, default=None):
+        """
+        通过key获取info信息
+
+        @param {str} session_id - session id
+        @param {str} key - key值
+        @param {object} default=None - 默认值
+
+        @returns {object} - 返回值
+        """
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                return self._get_redis_dict_by_key(
+                    'chat_robot:session:%s:info' % session_id, key, _redis,
+                    default=default
+                )
+        else:
+            return self.sessions[session_id]['info'].get(key, default)
+
+    def delete_unuse_sessions(self):
+        """
+        清除无效session，仅redis模式使用
+        """
+        _prefix = 'chat_robot:session:*'
+        _index = len(_prefix) - 1
+        with redis.Redis(connection_pool=self.redis_pool) as _redis:
+            # 获取session清单
+            _session_list = []
+            _keys = _redis.keys('chat_robot:session:*')
+            for _key in _keys:
+                _session_id = _key[_index:]
+                if _session_id != 'list' and _session_id.find(':') == -1:
+                    _session_list.append(_session_id)
+
+            # 逐个进行删除
+            for _session_id in _session_list:
+                if not _redis.hexists('chat_robot:session:list', _session_id):
+                    self._del_redis_dict(
+                        'chat_robot:session:%s' % _session_id, _redis
+                    )
+                    self._log_debug('delete unuse session [%s]!' % _session_id)
 
     #############################
     # 服务端上下文操作
     #############################
+
     def generate_context_id(self) -> str:
         """
         生成context_id
@@ -158,6 +302,21 @@ class QA(object):
         @returns {str} - 返回一个新的context_id
         """
         return str(uuid.uuid1())
+
+    def clear_session_dict(self, session_id: str, type_key: str):
+        """
+        清除session字典
+
+        @param {str} session_id - session id
+        @param {str} type_key - 要清除的类型，如info、context、cache、context_cache
+        """
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                self._clear_reids_dict(
+                    'chat_robot:session:%s:%s' % (session_id, type_key), _redis
+                )
+        else:
+            self.sessions[session_id][type_key].clear()
 
     def add_options_context(self, session_id: str, options: list):
         """
@@ -170,8 +329,17 @@ class QA(object):
                 ...
             ]
         """
-        self.sessions[session_id]['context'].clear()  # 清除所有上下文
-        self.sessions[session_id]['context']['options'] = options
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                # 清除所有上下文
+                self._clear_reids_dict('chat_robot:session:%s:context' % session_id, _redis)
+
+                self._add_redis_dict_value(
+                    'chat_robot:session:%s:context' % session_id, 'options', options, _redis
+                )
+        else:
+            self.sessions[session_id]['context'].clear()  # 清除所有上下文
+            self.sessions[session_id]['context']['options'] = options
         self._log_debug('Session[%s] add options context: %s' % (session_id, str(options)))
 
     def add_ask_context(self, session_id: str, ask_info: dict):
@@ -193,9 +361,34 @@ class QA(object):
         """
         # 如果字典没有uuid，则设置一个新的uuid
         ask_info.setdefault('context_id', self.generate_context_id())
-        self.sessions[session_id]['context'].clear()  # 清除所有上下文
-        self.sessions[session_id]['context']['ask'] = ask_info
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                # 清除所有上下文
+                self._clear_reids_dict('chat_robot:session:%s:context' % session_id, _redis)
+                self._add_redis_dict_value(
+                    'chat_robot:session:%s:context' % session_id, 'ask', ask_info, _redis
+                )
+        else:
+            self.sessions[session_id]['context'].clear()  # 清除所有上下文
+            self.sessions[session_id]['context']['ask'] = ask_info
+
         self._log_debug('Session[%s] add ask context: %s' % (session_id, str(ask_info)))
+
+    def get_context_dict(self, session_id: str):
+        """
+        获取context字典
+
+        @param {str} session_id - session id
+
+        @return {dict} - 上下文字典
+        """
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                return self._get_redis_dict(
+                    'chat_robot:session:%s:context' % session_id, _redis
+                )
+        else:
+            return self.sessions[session_id]['context']
 
     def add_cache(self, session_id: str, key: str, value, context_id: str = None):
         """
@@ -206,14 +399,35 @@ class QA(object):
         @param {object} value - 缓存的值
         @param {str} context_id=None - 指定的上下文id
         """
-        if context_id is None:
-            self.sessions[session_id]['cache'][key] = value
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                if context_id is None:
+                    self._add_redis_dict_value(
+                        'chat_robot:session:%s:cache' % session_id, key, value, _redis
+                    )
+                else:
+                    # 存在上下文id的时候，主动清掉其他上下文的临时信息
+                    if not _redis.hexists(
+                        'chat_robot:session:%s:context_cache' % session_id, context_id
+                    ):
+                        self._clear_reids_dict(
+                            'chat_robot:session:%s:context_cache' % session_id, _redis
+                        )
+
+                    self._add_redis_dict_value(
+                        'chat_robot:session:%s:context_cache' % session_id, context_id,
+                        {key: value}, _redis
+                    )
         else:
-            # 存在上下文id的时候，主动清掉其他上下文的临时信息
-            if context_id not in self.sessions[session_id]['context_cache'].keys():
-                self.sessions[session_id]['context_cache'].clear()
-                self.sessions[session_id]['context_cache'][context_id] = dict()
-            self.sessions[session_id]['context_cache'][context_id][key] = value
+            if context_id is None:
+                self.sessions[session_id]['cache'][key] = value
+            else:
+                # 存在上下文id的时候，主动清掉其他上下文的临时信息
+                if context_id not in self.sessions[session_id]['context_cache'].keys():
+                    self.sessions[session_id]['context_cache'].clear()
+                    self.sessions[session_id]['context_cache'][context_id] = dict()
+                self.sessions[session_id]['context_cache'][context_id][key] = value
+
         self._log_debug('Session[%s] context[%s] add cache %s[%s]' %
                         (session_id, context_id, key, str(value)))
 
@@ -225,13 +439,26 @@ class QA(object):
         @param {str} key - 缓存的key
         @param {str} context_id=None - 指定的上下文id
         """
-        if context_id is None:
-            if key in self.sessions[session_id]['cache'].keys():
-                del self.sessions[session_id]['cache'][key]
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                if context_id is None:
+                    self._del_redis_dict_by_key(
+                        'chat_robot:session:%s:cache' % session_id, key, _redis
+                    )
+                else:
+                    self._del_redis_dict_by_key(
+                        'chat_robot:session:%s:context_cache:%s' % (session_id, context_id),
+                        key, _redis
+                    )
         else:
-            if context_id in self.sessions[session_id]['context_cache'].keys():
-                if key in self.sessions[session_id]['context_cache'][context_id].keys():
-                    del self.sessions[session_id]['context_cache'][context_id][key]
+            if context_id is None:
+                if key in self.sessions[session_id]['cache'].keys():
+                    del self.sessions[session_id]['cache'][key]
+            else:
+                if context_id in self.sessions[session_id]['context_cache'].keys():
+                    if key in self.sessions[session_id]['context_cache'][context_id].keys():
+                        del self.sessions[session_id]['context_cache'][context_id][key]
+
         self._log_debug('Session[%s] context[%s] del cache %s' % (session_id, context_id, key))
 
     def get_cache_value(self, session_id: str, key: str, default=None, context_id: str = None):
@@ -245,13 +472,26 @@ class QA(object):
 
         @returns {object} - 返回缓存值
         """
-
-        if context_id is None:
-            _value = self.sessions[session_id]['cache'].get(key, default)
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                if context_id is None:
+                    _value = self._get_redis_dict_by_key(
+                        'chat_robot:session:%s:cache' % session_id, key, _redis,
+                        default=default
+                    )
+                else:
+                    _value = self._get_redis_dict_by_key(
+                        'chat_robot:session:%s:context_cache:%s' % (session_id, context_id),
+                        key, _redis, default=default
+                    )
         else:
-            _value = (self.sessions[session_id]['context_cache']
-                      .get(context_id, {})
-                      .get(key, default))
+            if context_id is None:
+                _value = self.sessions[session_id]['cache'].get(key, default)
+            else:
+                _value = (self.sessions[session_id]['context_cache']
+                          .get(context_id, {})
+                          .get(key, default))
+
         self._log_debug('Session[%s] context[%s] get cache %s[%s]' %
                         (session_id, context_id, key, str(_value)))
         return _value
@@ -264,13 +504,33 @@ class QA(object):
         @param {dict} info - 要更新的信息字典
         @param {str} context_id=None - 指定的上下文id
         """
-        if context_id is None:
-            self.sessions[session_id]['cache'].update(info)
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                if context_id is None:
+                    self._add_redis_dict(
+                        'chat_robot:session:%s:cache' % session_id, info, _redis
+                    )
+                else:
+                    if not _redis.hexists(
+                        'chat_robot:session:%s:context_cache' % session_id, context_id
+                    ):
+                        self._clear_reids_dict(
+                            'chat_robot:session:%s:context_cache' % session_id, _redis
+                        )
+
+                    self._add_redis_dict(
+                        'chat_robot:session:%s:context_cache' % session_id,
+                        {context_id: info}, _redis
+                    )
         else:
-            if context_id not in self.sessions[session_id]['context_cache'].keys():
-                self.sessions[session_id]['context_cache'].clear()
-                self.sessions[session_id]['context_cache'][context_id] = dict()
-            self.sessions[session_id]['context_cache'][context_id].update(info)
+            if context_id is None:
+                self.sessions[session_id]['cache'].update(info)
+            else:
+                if context_id not in self.sessions[session_id]['context_cache'].keys():
+                    self.sessions[session_id]['context_cache'].clear()
+                    self.sessions[session_id]['context_cache'][context_id] = dict()
+                self.sessions[session_id]['context_cache'][context_id].update(info)
+
         self._log_debug('Session[%s] context[%s] update cache dict: %s' %
                         (session_id, context_id, info))
 
@@ -284,13 +544,25 @@ class QA(object):
 
         @returns {dict} - 返回缓存字典
         """
-        if context_id is None:
-            _dict = self.sessions[session_id]['cache']
+        if self.use_redis:
+            with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                if context_id is None:
+                    _dict = self._get_redis_dict(
+                        'chat_robot:session:%s:cache' % session_id, _redis
+                    )
+                else:
+                    _dict = self._get_redis_dict(
+                        'chat_robot:session:%s:context_cache:%s' % (session_id, context_id),
+                        _redis
+                    )
         else:
-            if context_id not in self.sessions[session_id]['context_cache'].keys():
-                _dict = default
+            if context_id is None:
+                _dict = self.sessions[session_id]['cache']
             else:
-                _dict = self.sessions[session_id]['context_cache'][context_id]
+                if context_id not in self.sessions[session_id]['context_cache'].keys():
+                    _dict = default
+                else:
+                    _dict = self.sessions[session_id]['context_cache'][context_id]
 
         self._log_debug('Session[%s] context[%s] get cache dict: %s' %
                         (session_id, context_id, _dict))
@@ -312,8 +584,11 @@ class QA(object):
         @returns {list} - 返回的问题答案字符数组，有可能是多个答案
         """
         # 检查session是否存在
-        if session_id is not None and session_id not in self.sessions.keys():
+        if not self.check_session_exists(session_id):
             raise FileNotFoundError('session id [%s] not exists!' % session_id)
+
+        # 更新上次访问时间
+        self.update_last_time(session_id)
 
         # 检查collection
         if collection is not None and collection not in self.answer_dao.sorted_collection:
@@ -413,7 +688,7 @@ class QA(object):
 
         @returns {list} - 处理后的答案
         """
-        if not replace_pre_def or session_id is None or session_id not in self.sessions.keys():
+        if not self.check_session_exists(session_id):
             # 原样返回
             return answers
 
@@ -424,8 +699,9 @@ class QA(object):
             if _match_str.startswith('{$info='):
                 # 获取info的值
                 _key = _match_str[7:-2]
-                if _key in self.sessions[session_id]['info'].keys():
-                    _value = self.sessions[session_id]['info'][_key]
+                _session_value = self.get_info_by_key(session_id, _key, default=None)
+                if _session_value is not None:
+                    _value = _session_value
             elif _match_str.startswith('{$cache=') and context_id is not None:
                 # 获取缓存的值
                 _key = _match_str[8:-2]
@@ -476,8 +752,8 @@ class QA(object):
         if len(_match_list) == 0:
             # 没有匹配到答案, 插入记录表用于后续改进
             NoMatchAnswers.create(
-                session_info='' if session_id is None or session_id not in self.sessions.keys() else str(
-                    self.sessions[session_id]['info']),
+                session_info='' if not self.check_session_exists(session_id) else str(
+                    self.get_info_dict(session_id)),
                 question=question
             )
             # 匹配不到问题的时候获取反馈信息
@@ -508,9 +784,18 @@ class QA(object):
         while not self._session_overtime_thread_stop:
             try:
                 _del_list = list()
-                for _key in self.sessions.keys():
-                    if (datetime.datetime.now() - self.sessions[_key]['last_time']).total_seconds() > self.session_overtime:
-                        _del_list.append(_key)
+                if self.use_redis:
+                    with redis.Redis(connection_pool=self.redis_pool) as _redis:
+                        for _key in _redis.hkeys('chat_robot:session:list'):
+                            _last_time = self._get_redis_dict_by_key(
+                                'chat_robot:session:list', _key, _redis
+                            )
+                            if _last_time is None or type(_last_time) != datetime.datetime or (datetime.datetime.now() - _last_time).total_seconds() > self.session_overtime:
+                                _del_list.append(_key)
+                else:
+                    for _key in self.sessions.keys():
+                        if (datetime.datetime.now() - self.sessions[_key]['last_time']).total_seconds() > self.session_overtime:
+                            _del_list.append(_key)
 
                 # 开始清除
                 for _session_id in _del_list:
@@ -549,13 +834,13 @@ class QA(object):
 
         # 上下文预处理
         if session_id is not None:
-            _session = self.sessions[session_id]
-            if 'options' in _session['context'].keys():
+            _context_dict = self.get_context_dict(session_id)
+            if 'options' in _context_dict.keys():
                 # 选项处理
                 if question.isdigit():
                     # 回答的内容是数字选项
                     _index = int(question)
-                    _len = len(_session['context']['options'])
+                    _len = len(_context_dict['options'])
                     if _index < 1 or _len < _index:
                         # 超过了选项值范围，重新提示
                         _answers = self.answer_replace_pre_def(
@@ -564,22 +849,22 @@ class QA(object):
                             replace_pre_def=True
                         )
 
-                        for _option in _session['context']['options']:
+                        for _option in _context_dict['options']:
                             _answers.append(_option[1])
                     else:
-                        _stdq_id = _session['context']['options'][_index - 1][0]
+                        _stdq_id = _context_dict['options'][_index - 1][0]
                         _match_list = [
                             (StdQuestion.get(StdQuestion.id == _stdq_id),
                              Answer.get(Answer.std_question_id == _stdq_id))
                         ]
                         # 清除上下文
-                        _session['context'].pop('options')
+                        self.clear_session_dict(session_id, 'context')
                 else:
                     # 非数字选项，按新问题处理，清除上下文
-                    _session['context'].pop('options')
-            elif 'ask' in _session['context'].keys():
+                    self.clear_session_dict(session_id, 'context')
+            elif 'ask' in _context_dict.keys():
                 # 提问处理
-                _ask_info = _session['context']['ask']
+                _ask_info = _context_dict['ask']
                 _context_id = _ask_info['context_id']
                 _deal_fun = self.plugins['ask'][_ask_info['deal_class']][_ask_info['deal_fun']]
                 _action, _ret = _deal_fun(
@@ -598,7 +883,7 @@ class QA(object):
                         context_id=_context_id
                     )
                     # 清除上下文
-                    _session['context'].clear()
+                    self.clear_session_dict(session_id, 'context')
                 elif _action == 'to':
                     # 跳转到指定问题
                     _stdq_id = _ret
@@ -607,7 +892,7 @@ class QA(object):
                             Answer.get(Answer.std_question_id == _stdq_id))
                     ]
                     # 清除上下文
-                    _session['context'].clear()
+                    self.clear_session_dict(session_id, 'context')
                 else:
                     # 重新提问一次
                     if _ret is None:
@@ -839,7 +1124,7 @@ class QA(object):
             )
         elif _answer.a_type == 'options':
             # 选项类答案处理，提示信息放在answer字段上, type_param的格式为：[[std_question_id, 'option_str'], ...]
-            if session_id is None or session_id not in self.sessions.keys():
+            if not self.check_session_exists(session_id):
                 raise FileNotFoundError('not support options if session id is None!')
 
             _options = eval(_answer.type_param)
@@ -947,7 +1232,7 @@ class QA(object):
         @returns {list} - 返回的提示问题清单
         """
         _answers = list()
-        if session_id is None or session_id not in self.sessions.keys():
+        if not self.check_session_exists(session_id):
             # 无法使用session，改为提示问题的形式
             _answers.append(self.select_options_tip_no_session)
             _options = None
@@ -976,8 +1261,220 @@ class QA(object):
         return _answers
 
     #############################
+    # Session相关的处理函数
+    #############################
+    def _check_redis_session_exists(self, session_id: str, redis_connection):
+        """
+        检查session是否存在
+
+        @param {str} session_id - session id
+        @param {object} redis_connection - redis的连接
+
+        @returns {bool} - 是否存在
+        """
+        return redis_connection.hexists(
+            'chat_robot:session:list',
+            session_id
+        )
+
+    def _add_redis_dict(self, name: str, mapping: dict, redis_connection):
+        """
+        将字典存入redis中
+
+        @param {str} name - redis中的访问key
+        @param {dict} mapping - 要存入的字典
+        @param {object} redis_connection - redis的连接
+        """
+        # 将字典转换为一维dict
+        for _key in mapping:
+            if type(mapping[_key]) == dict:
+                # 如果是字典，继续调用自己进行下一级的处理
+                _name = '%s:%s' % (name, _key)  # 下级对象的name是原来的基础上增加
+                _mapping = mapping[_key]  # 缓存对象
+                mapping[_key] = '%s:%s' % ('dict', _name)  # 指定当前对象类型为dict
+                self._add_redis_dict(_name, _mapping, redis_connection)
+            else:
+                # 非字典，根据情况进行字符串的转换
+                mapping[_key] = self._value_to_redis_str(mapping[_key])
+
+        # 处理完成，存入redis
+        if len(mapping) > 0:
+            redis_connection.hset(name, mapping=mapping)
+
+    def _add_redis_dict_value(self, name: str, key: str, value: object, redis_connection):
+        """
+        把指定值添加到redis字典中
+
+        @param {str} name - redis的key
+        @param {str} key - 字典中的搜索key
+        @param {object} value - 值
+        @param {object} redis_connection - Redis连接
+        """
+        if type(value) == dict:
+            _name = '%s:%s' % (name, key)  # 下级对象的name是原来的基础上增加
+            _mapping = value  # 缓存对象
+            _value = '%s:%s' % ('dict', _name)  # 指定当前对象类型为dict
+
+            # 添加下级字典
+            self._add_redis_dict(_name, _mapping, redis_connection)
+        else:
+            _value = self._value_to_redis_str(value)
+
+        # 处理完成，存入redis
+        redis_connection.hset(name, key=key, value=_value)
+
+    def _get_redis_dict(self, name: str, redis_connection) -> dict:
+        """
+        获取redis保存的dict
+
+        @param {str} name - redis上的key
+        @param {object} redis_connection - redis连接对象
+
+        @returns {dict} - 返回的hash字典
+        """
+        _dict = redis_connection.hgetall(name)
+        # 遍历每个值进行转换处理
+        for _key in _dict.keys():
+            _dict[_key] = self._redis_str_to_value(_dict[_key], redis_connection)
+
+        return _dict
+
+    def _get_redis_dict_by_key(self, name: str, key: str, redis_connection, default=None):
+        """
+        根据key获取字典值
+
+        @param {str} name - redis的key
+        @param {str} key - 字典中的搜索key
+        @param {object} redis_connection - Redis连接
+        @param {object} default=None - 取不到的默认值
+
+        @returns {object} - 返回值
+        """
+        _value = redis_connection.hget(name, key)
+        if _value is None:
+            return default
+        else:
+            return self._redis_str_to_value(_value, redis_connection)
+
+    def _clear_reids_dict(self, name: str, redis_connection):
+        """
+        清除指定的redis字典
+
+        @param {str} name - redis上的key
+        @param {object} redis_connection - redis连接对象
+        """
+        _dict = redis_connection.hgetall(name)
+        for _key in _dict.keys():
+            self._del_redis_dict_by_key(name, _key, redis_connection)
+
+    def _del_redis_dict(self, name: str, redis_connection):
+        """
+        删除redis保存的字典
+        注意：该函数只是删除字典本身，不会删除上一级字典的引用
+
+        @param {str} name - redis上的key
+        @param {object} redis_connection - redis连接对象
+        """
+        # 遍历检查是否有dict类型
+        _dict = redis_connection.hgetall(name)
+        for _key in _dict.keys():
+            if _dict[_key].startswith('dict:'):
+                # 删除子字典
+                self._del_redis_dict(_dict[_key][5:], redis_connection)
+
+        # 直接删除
+        redis_connection.delete(name)
+
+    def _del_redis_dict_by_key(self, name: str, key: str, redis_connection):
+        """
+        删除name字典下的key值
+
+        @param {str} name - redis的字典key
+        @param {str} key - 字典下的key索引
+        @param {object} redis_connection - Redis连接
+        """
+        if redis_connection.hexists(name, key):
+            # 删除下一级的字典(如果有的话)
+            self._del_redis_dict('%s:%s' % (name, key), redis_connection)
+
+            # 删除字典中的值
+            redis_connection.hdel(name, key)
+
+    def _value_to_redis_str(self, value: object) -> str:
+        """
+        将对象转换为redis格式字符串
+
+        @param {object} value - 要转换的对象
+
+        @returns {str} - 转换后的对象
+        """
+        _type = type(value)
+        _str = ''
+        if _type == str:
+            _str = '%s:%s' % ('str', value)
+        elif _type == int:
+            _str = '%s:%s' % ('int', str(value))
+        elif _type == float:
+            _str = '%s:%s' % ('float', str(value))
+        elif _type == bool:
+            _str = '%s:%s' % ('bool', str(value))
+        elif _type == datetime.datetime:
+            _str = '%s:%s' % ('datetime', value.strftime('%Y-%m-%d %H:%M:%S'))
+        else:
+            # 其他类型，尝试转换为json
+            _str = '%s:%s' % ('json', str(value))
+
+        # 返回结果
+        return _str
+
+    def _redis_str_to_value(self, redis_str: str, redis_connection=None):
+        """
+        将redis获取到的对象转换为python对象
+
+        @param {str} redis_str - redis存储的字符串
+        @param {object} redis_connection=None - 到redis的连接对象，如果是dict对象要用到
+
+        @returns {object} - python对象
+        """
+        try:
+            # 获取信息
+            _index = redis_str.find(':')
+            if _index == -1:
+                # 不符合格式要求原样返回
+                return redis_str
+
+            _type = redis_str[0: _index]
+            _value_str = redis_str[_index + 1:]
+
+            if _type == 'str':
+                return _value_str
+            elif _type == 'int':
+                return int(_value_str)
+            elif _type == 'float':
+                return float(_value_str)
+            elif _type == 'bool':
+                return bool(_value_str)
+            elif _type == 'datetime':
+                return datetime.datetime.strptime(_value_str, '%Y-%m-%d %H:%M:%S')
+            elif _type == 'json':
+                return eval(_value_str)
+            elif _type == 'dict':
+                # 通过标识获取字典
+                return self._get_redis_dict(_value_str, redis_connection)
+            else:
+                # 原样返回
+                return redis_str
+        except:
+            # 异常原样返回
+            self._log_error('Redis string [%s] to value error: %s' % (
+                redis_str, traceback.format_exc()
+            ))
+            return redis_str
+
+    #############################
     # 日志输出相关函数
     #############################
+
     def _log_info(self, msg: str, *args, **kwargs):
         """
         输出info日志
@@ -1022,3 +1519,9 @@ if __name__ == '__main__':
            '作者：%s\n'
            '发布日期：%s\n'
            '版本：%s' % (__MOUDLE__, __DESCRIPT__, __AUTHOR__, __PUBLISH__, __VERSION__)))
+
+    _pool = redis.ConnectionPool(max_connections=100, host='10.16.85.63',
+                                 port=6379, decode_responses=True)
+    _r = redis.Redis(connection_pool=_pool)
+    _keys = _r.keys('chat_robot:session:*')
+    print(_keys)

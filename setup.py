@@ -33,6 +33,7 @@ DEPENDENCIES = [
     'pandas',
     'jieba',
     'paddlepaddle-tiny==1.6.1',
+    'redis'
 ]
 
 # DEPENDENCIES = []

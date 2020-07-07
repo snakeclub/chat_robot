@@ -9,6 +9,7 @@
         client_path : 客户端目录
         debug : 是否是debug模式
         qa_config : 问答处理配置
+            use_redis : bool, 是否使用Redis作为缓存，默认为false
             use_nlp : bool, 是否使用NLP自然语言解析辅助(支持意图猜测)
             session_overtime : float, session超时时间(秒)
             session_checktime : float, 检查session超时的间隔时间(秒)
@@ -46,6 +47,17 @@
             其余参数可参考bert-serving-client官方文档
         answerdb : 答案管理数据库
             type : 数据库类型，MySQL
+            MySQL数据库的连接参数：
+                host : 服务器地址，默认127.0.0.1
+                port : int, 服务器端口，默认3306
+                user : 登陆用户名
+                password : 登陆密码
+                connect_timeout : float,连接超时时间(秒)
+                charset : 字符集，默认utf8
+        logger : 日志配置，具体配置参考HiveNetLib.simple_log
+        redis : Redis缓存数据库配置
+            connection : 数据库连接配置，详细参数参考redis.Connection
+            pool_size : int, 连接池大小
     -->
     <port type="int">8001</port>
     <excel_engine>xlrd</excel_engine>
@@ -55,6 +67,7 @@
     <client_path>./client</client_path>
     <debug type="bool">true</debug>
     <qa_config>
+        <use_redis type="bool">false</use_redis>
         <use_nlp type="bool">true</use_nlp>
         <session_overtime type="float">300.0</session_overtime>
         <session_checktime type="float">60.0</session_checktime>
@@ -95,7 +108,7 @@
         <user>root</user>
         <password>123456</password>
         <database>answerdb</database>
-        <connect_timeout type="int">10</connect_timeout>
+        <connect_timeout type="float">10</connect_timeout>
         <charset>utf8mb4</charset>
     </answerdb>
     <logger>
@@ -157,4 +170,11 @@
         <is_create_logfile_by_day>true</is_create_logfile_by_day>
         <call_fun_level>0</call_fun_level>
     </logger>
+    <redis>
+        <connection>
+            <host>10.16.85.63</host>
+            <port type="int">6379</port>
+        </connection>
+        <pool_size type="int">10000</pool_size>
+    </redis>
 </server>

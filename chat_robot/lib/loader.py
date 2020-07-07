@@ -110,7 +110,8 @@ class QAServerLoader(object):
         # 初始化QA模块
         self.qa = QA(
             self.qa_manager, self.nlp, self.server_config['execute_path'], plugins=self.plugins,
-            qa_config=self.server_config['qa_config'], logger=self.logger
+            qa_config=self.server_config['qa_config'], redis_config=self.server_config['redis'],
+            logger=self.logger
         )
 
         # 动态加载路由

@@ -236,6 +236,85 @@ $ docker restart milvus_cpu_0.10.0
 
 
 
+### 安装Redis作为访问数据缓存（如需支持分布式访问则必须）
+
+1、获取Redis的Docker镜像
+
+```
+$ docker pull redis:latest
+```
+
+最新的版本应该是6.0.5，以下示例的配置以6.0.5为准，如果不确定可以使用以下方式确认镜像的版本：
+
+```
+# 创建一个测试docker
+$ docker run -d -p 6379:6379 --name redis_test redis redis-server --appendonly yes
+
+# 进入docker
+$ docker exec -ti redis_test bash
+
+# 执行以下命令查看服务器和客户端版本
+$ redis-server -v
+Redis server v=6.0.5 sha=00000000:0 malloc=jemalloc-5.1.0 bits=64 build=db63ea56716d515f
+
+$ redis-cli -v
+redis-cli 6.0.5
+
+# 删除临时的测试容器
+$ docker stop redis_test
+$ docker rm redis_test
+```
+
+2、获取redis的配置文件并进行修改，可以从https://redis.io/上下载最新的源码，在源码根目录上的redis.conf就是默认的配置文件，获取到后我们修改以下几项内容：
+
+```
+# 绑定的主机地址
+# 你可以绑定单一接口，如果没有绑定，所有接口都会监听到来的连接, 如果需要支持远程访问，需注释该配置
+# bind 127.0.0.1
+
+# 如果需要其他主机能访问服务，需要设置为no
+protected-mode no
+
+# 使用docker必须将该参数设置为no，否则无法启动容器
+daemonize no
+
+# 指定aof等数据文件存储的路径
+dir /data
+
+# 否启用aof持久化方式 。即是否在每次更新操作后进行日志记录，默认配置是no，即在采用异步方式把数据写入到磁盘，如果不开启，可能会在断电时导致部分数据丢失
+appendonly yes
+```
+
+修改后的配置文件可以从 /docs/redis/redis.conf 获取
+
+3、在服务器上建立相应目录，例如：
+
+```
+cd /home/ubuntu18/milvus
+mkdir redis
+mkdir redis/conf
+mkdir redis/data
+```
+
+然后将配置文件redis.conf复制到 /home/ubuntu18/milvus/redis/conf 目录下
+
+4、启动容器
+
+```
+$ docker run -d --privileged=true -p 6379:6379 -v  /home/ubuntu18/milvus/redis/conf/redis.conf:/usr/local/etc/redis/redis.conf -v /home/ubuntu18/milvus/redis/data:/data --name chat_redis redis redis-server /usr/local/etc/redis/redis.conf
+```
+
+5、进入容器验证
+
+```
+$ docker exec -it chat_redis /bin/bash
+root@bb0bc1088bd1:/data# redis-cli
+127.0.0.1:6379> set test 1
+OK
+```
+
+
+
 ## 安装chat robot
 
 注意：chat robot需要使用mysql作为数据库服务器，请在启动前安装好MySQL并建好对应的数据库（可以与Milvus共用数据库实例，通过不同数据库区分即可）

@@ -47,6 +47,7 @@
     <client_path>./client</client_path>
     <debug type="bool">true</debug>
     <qa_config>
+        <use_redis type="bool">true</use_redis>
         <use_nlp type="bool">true</use_nlp>
         <session_overtime type="float">300.0</session_overtime>
         <session_checktime type="float">60.0</session_checktime>
@@ -130,4 +131,11 @@
         <is_create_logfile_by_day>true</is_create_logfile_by_day>
         <call_fun_level>0</call_fun_level>
     </logger>
+    <redis>
+        <connection>
+            <host>10.16.85.63</host>
+            <port type="int">6379</port>
+        </connection>
+        <pool_size type="int">10000</pool_size>
+    </redis>
 </server>
