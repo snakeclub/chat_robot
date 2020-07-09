@@ -16,8 +16,14 @@
   <link rel="manifest" href="/static/manifest.json">
   <script type="text/javascript">
     window.onload = function(){
+      // 先进行登陆
+      $.AjaxLogin('test','123456');
+
       // 获取用户Session ID
       $.AjaxGetSessionId();
+
+      // 增加定时器，定时更新token, 设置为5分钟
+      window.setTimeout($.AjaxGenerateToken, 300000);
 
       // 聊天记录中增加时间
       $.AddTimeStamp();

@@ -6,6 +6,11 @@
     // 间隔多少秒要重新显示日期
     $.ShowTimeBetween = 300;
 
+    // 用户信息
+    $.UserId = "";
+    $.UserName = "";
+    $.Token = "";
+
     // 客户的sessionID
     $.SessionId = "";
 
@@ -104,6 +109,60 @@
         );
     };
 
+    //执行登陆动作
+    $.AjaxLogin = function(username, password) {
+        // 生成调用参数
+        var sendObj = new Object();
+        sendObj.username = username;
+        sendObj.password = password;
+
+        $.ajax({
+            url: "/api/Client/login",
+            type: 'post',
+            contentType: 'application/json',
+            data: JSON.stringify(sendObj),
+            timeout: 5000,
+            async: false, // 设置同步完成
+            success: function(retObj) {
+                if (retObj.status == '00000') {
+                    $.UserId = retObj.user_id;
+                    $.UserName = username;
+                    $.Token = retObj.token;
+                } else {
+                    alert("用户登陆失败[" + retObj.status + "]: " + retObj.msg);
+                };
+            },
+            error: function(xhr, status, error) {
+                alert("用户登陆异常: " + error);
+            },
+        });
+    };
+
+    $.AjaxGenerateToken = function() {
+        $.ajax({
+            url: "/api/Qa/generate_token",
+            type: 'get',
+            contentType: 'application/json',
+            headers: {
+                UserId: $.UserId,
+                Authorization: 'JWT ' + $.Token
+            },
+            data: null,
+            timeout: 5000,
+            async: false, // 设置同步完成
+            success: function(retObj) {
+                if (retObj.status == '00000') {
+                    $.Token = retObj.token;
+                } else {
+                    alert("更新token失败[" + retObj.status + "]: " + retObj.msg);
+                };
+            },
+            error: function(xhr, status, error) {
+                alert("更新token失败: " + error);
+            },
+        });
+    };
+
     // 获取Session ID
     $.AjaxGetSessionId = function() {
         // 生成调用参数
@@ -115,6 +174,10 @@
             url: "/api/Qa/GetSessionId",
             type: 'post',
             contentType: 'application/json',
+            headers: {
+                UserId: $.UserId,
+                Authorization: 'JWT ' + $.Token
+            },
             data: JSON.stringify(sendObj),
             timeout: 5000,
             async: false, // 设置同步完成
@@ -156,6 +219,10 @@
             url: "/api/Qa/SearchAnswer",
             type: 'post',
             contentType: 'application/json',
+            headers: {
+                UserId: $.UserId,
+                Authorization: 'JWT ' + $.Token
+            },
             data: JSON.stringify(sendObj),
             timeout: 5000,
             async: false, // 设置同步完成

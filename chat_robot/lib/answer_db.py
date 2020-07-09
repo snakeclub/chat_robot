@@ -185,6 +185,20 @@ class NlpPurposConfigDict(BaseModel):
         )
 
 
+# restful api 安全机制的数据库模型
+class RestfulApiUser(BaseModel):
+    """
+    RestfulApi的使用用户表
+    """
+    id = pw.BigAutoField(primary_key=True)  # 自增字段
+    username = pw.CharField(max_length=32, index=True, unique=True)  # 登陆用户名
+    password_hash = pw.CharField(max_length=128)  # 密码哈希值
+
+    class Meta:
+        # 定义数据库表名
+        table_name = 'restful_api_user'
+
+
 # 重定义数据库对象
 class ReconnectMixin(object):
     """
@@ -385,19 +399,3 @@ if __name__ == '__main__':
            '作者：%s\n'
            '发布日期：%s\n'
            '版本：%s' % (__MOUDLE__, __DESCRIPT__, __AUTHOR__, __PUBLISH__, __VERSION__)))
-
-    import re
-    _str = "abc{$id=1$}cde{$id=\'A3\'$}ef"
-    print(re.findall(r'\{\$.+?\$\}', _str, re.M))
-
-    print(re.findall(r'\{\$.+?\$1111\}', _str))
-
-    re.search()
-
-    def fun(m):
-        print(m.group(0))
-        return '{id}'
-
-    print(
-        re.sub(r'\{\$.+?\$\}', fun, _str, re.M)
-    )

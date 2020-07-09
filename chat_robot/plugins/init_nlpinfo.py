@@ -41,6 +41,18 @@ class InitInfo(object):
         return 'nlpinfo'
 
     @classmethod
+    def initialize(cls, loader, qa_manager, qa, **kwargs):
+        """
+        装载插件前执行的初始化处理
+        可以不定义
+
+        @param {QAServerLoader} loader - 服务装载器
+        @param {QAManager} qa_manager - 数据管理
+        @param {QA} qa - 问答服务
+        """
+        pass
+
+    @classmethod
     def get_by_question(cls, question: str, words: list, action: str, match_word: str, collection: str,
                         partition: str, std_question_id: int, **kwargs):
         """
@@ -60,7 +72,7 @@ class InitInfo(object):
                     're_find': list_按正则表达式从词中获取内容(re.findall, 取第一个匹配值，非空)
                 }
 
-        @returns {dict} - 返回匹配到的info列表字典
+        @returns {dict} - 返回匹配到的info列表字典，传出的值将放入job及ask执行函数的kwargs参数中
         """
         _info = dict()
         for _condition in kwargs.get('condition', '[]'):
@@ -116,7 +128,7 @@ class InitInfo(object):
                     'len_max': int_词最大长度-可选,
                 }
 
-        @returns {dict} - 返回匹配到的info列表字典
+        @returns {dict} - 返回匹配到的info列表字典，传出的值将放入job及ask执行函数的kwargs参数中
         """
         _info = dict()
         # 遍历获取信息
@@ -178,6 +190,48 @@ class InitInfo(object):
                     _info[_key] = _match_word
 
         # 返回信息
+        return _info
+
+    @classmethod
+    def get_wordclass_list(cls, question: str, words: list, action: str, match_word: str, collection: str,
+                           partition: str, std_question_id: int, **kwargs):
+        """
+        获取词性对应的词列表
+
+        @param {str} question - 完整的问题句子
+        @param {list} words - 分词列表
+        @param {str} action - 匹配上的意图
+        @param {str} match_word - 匹配上的词
+        @param {str} collection - 意图所属问题分类
+        @param {str} partition - 意图所属场景
+        @param {int} std_question_id - 对应标准问题id
+        @param {kwargs} - 扩展信息，来源于nlp_purpos_config_dict配置的入参参数
+            'condition' {list} - 匹配清单，数组每个为一个匹配对象配置字典:
+                {
+                    'key': str_匹配后的key值,
+                    'class': list_要匹配的词性列表,
+                }
+
+        @returns {dict} - 返回匹配到的info列表字典，传出的值将放入job及ask执行函数的kwargs参数中
+        """
+        _info = dict()
+        # 遍历获取信息
+        for _word in words:
+            for _condition in kwargs.get('condition', '[]'):
+                # 要匹配的key
+                _key = _condition.get('key', '')
+                if _key == '':
+                    # key是必须的值
+                    continue
+
+                if _key not in _info.keys():
+                    _info[_key] = list()
+
+                # 匹配词性
+                if _word[1] in _condition.get('class', []):
+                    _info[_key].append(_word[0])
+
+        # 返回结果
         return _info
 
 

@@ -20,6 +20,7 @@ import uuid
 import datetime
 from functools import wraps
 from flask import Flask, request, jsonify
+from flask_httpauth import HTTPTokenAuth
 from werkzeug.routing import Rule
 from HiveNetLib.base_tools.run_tool import RunTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
@@ -33,6 +34,12 @@ __DESCRIPT__ = u'对外提供的restful api服务'  # 模块描述
 __VERSION__ = '0.1.0'  # 版本
 __AUTHOR__ = u'黎慧剑'  # 作者
 __PUBLISH__ = '2020.06.17'  # 发布日期
+
+
+auth = RunTool.get_global_var('HTTP_TOKEN_AUTH')
+if auth is None:
+    auth = HTTPTokenAuth(scheme='JWT')
+    RunTool.set_global_var('HTTP_TOKEN_AUTH', auth)
 
 
 class FlaskTool(object):
@@ -118,6 +125,95 @@ class FlaskTool(object):
             return _ret
         return wrapper
 
+    @classmethod
+    def get_token_auth(cls) -> HTTPTokenAuth:
+        """
+        获取HTTPTokenAuth对象
+
+        @returns {HTTPTokenAuth} - 返回唯一的HTTPTokenAuth对象
+        """
+        _auth = RunTool.get_global_var('HTTP_TOKEN_AUTH')
+        if _auth is None:
+            _auth = HTTPTokenAuth(scheme='JWT')
+            RunTool.set_global_var('HTTP_TOKEN_AUTH', _auth)
+
+        return _auth
+
+
+@auth.verify_token
+def verify_token(token: str):
+    """
+    进行token的验证，如果需要实现自定义的验证方式，请重载该方法
+
+    @param {str} token - 要验证的token
+
+    @returns {bool} - 验证结果
+    """
+    _loader = RunTool.get_global_var('QA_LOADER')
+    if _loader is None:
+        return False
+
+    return _loader.verify_token(int(request.headers.get('UserID', 0)), token)
+
+
+class Client(object):
+    """
+    客户端产生并获取token的后门，正常情况token应该在客户登陆后产生并反馈给客户端
+    """
+    @classmethod
+    @FlaskTool.log
+    def login(cls, methods=['POST']):
+        """
+        执行用户登陆
+        传入信息为json字典，例如:
+            {
+                'username': 'test',
+                'password': '123456'
+            }
+
+        @return {str} - 返回回答的json字符串
+            status : 处理状态
+                00000 - 登陆成功
+                10001 - 用户名密码验证失败
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+            user_id : int, 用户id
+            token : 返回可用的token
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        try:
+            _ret_json = {
+                'status': '00000',
+                'msg': 'success'
+            }
+
+            _back = _qa_loader.login(
+                request.json['username'],
+                request.json['password']
+            )
+
+            _ret_json['status'] = _back['status']
+            if _back['status'] == '00000':
+                _ret_json['user_id'] = _back['user_id']
+                _ret_json['token'] = _back['token']
+            elif _back['status'] == '10000':
+                _ret_json['msg'] = 'username not exists!'
+            else:
+                _ret_json['msg'] = 'username or password error!'
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'status': '20001',
+                'msg': '生成session id出现异常'
+            }
+
+        # 返回结果
+        return jsonify(_ret_json)
+
 
 class Qa(object):
     """
@@ -125,6 +221,47 @@ class Qa(object):
     """
     @classmethod
     @FlaskTool.log
+    @auth.login_required
+    def generate_token(cls, methods=['GET']):
+        """
+        生成新的token
+
+        @return {str} - 返回回答的json字符串
+            status : 处理状态
+                00000 - 成功
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+            token : 返回新生成的token
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        try:
+            _ret_json = {
+                'status': '00000',
+                'msg': 'success',
+            }
+
+            _token = _qa_loader.generate_token(
+                int(request.headers['UserId']),
+                last_token=(request.headers['WWW-Authenticate'])
+            )
+            _ret_json['token'] = _token
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'status': '20001',
+                'msg': '生成session id出现异常'
+            }
+
+        # 返回结果
+        return jsonify(_ret_json)
+
+    @classmethod
+    @FlaskTool.log
+    @auth.login_required
     def GetSessionId(cls, methods=['POST']):
         """
         获取用户Session并上传用户信息
@@ -144,6 +281,10 @@ class Qa(object):
         # 创建session并存入信息
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         try:
+            # 尝试加入IP地址
+            if 'ip' not in request.json.keys():
+                request.json['ip'] = request.remote_addr
+
             _session_id = _qa_loader.qa.generate_session(request.json)
             _ret_json = {
                 'status': '00000',
@@ -166,6 +307,7 @@ class Qa(object):
 
     @classmethod
     @FlaskTool.log
+    @auth.login_required
     def SearchAnswer(cls, methods=['POST']):
         """
         获取问题答案

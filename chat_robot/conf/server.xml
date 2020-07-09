@@ -6,8 +6,15 @@
         excel_batch_num : int, excel导入数据的情况下，每次导入的记录数
         extend_plugin_path : 扩展插件代码文件目录
         enable_client : bool，是否启动客户端
+        add_test_login_user : bool, 是否新增测试登陆用户，test/123456
         client_path : 客户端目录
         debug : 是否是debug模式
+        security : 安全相关配置
+            enable_token : 是否启动token验证
+            secret_key : 密码加密的服务端密钥
+            token_expire : int, token的超时时间, 单位为秒
+            salt : 加密盐字符串，用于干扰破解
+            algorithm_name : 算法名，可以选值为none、HS256、HS384、HS512
         qa_config : 问答处理配置
             use_redis : bool, 是否使用Redis作为缓存，默认为false
             use_nlp : bool, 是否使用NLP自然语言解析辅助(支持意图猜测)
@@ -64,8 +71,16 @@
     <excel_batch_num type="int">100</excel_batch_num>
     <extend_plugin_path>../test/plugins</extend_plugin_path>
     <enable_client type="bool">true</enable_client>
+    <add_test_login_user type="bool">true</add_test_login_user>
     <client_path>./client</client_path>
     <debug type="bool">true</debug>
+    <security>
+        <enable_token type="bool">true</enable_token>
+        <secret_key>this is a secret key</secret_key>
+        <token_expire type="int">3600</token_expire>
+        <salt>my_salt_str</salt>
+        <algorithm_name>HS512</algorithm_name>
+    </security>
     <qa_config>
         <use_redis type="bool">false</use_redis>
         <use_nlp type="bool">true</use_nlp>

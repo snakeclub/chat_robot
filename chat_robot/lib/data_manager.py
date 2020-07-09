@@ -29,7 +29,7 @@ from HiveNetLib.base_tools.run_tool import RunTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict
+from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, RestfulApiUser
 
 
 __MOUDLE__ = 'data_manager'  # 模块名
@@ -44,6 +44,9 @@ ANSWERDB_TABLES = [
     Answer, StdQuestion, ExtQuestion, CollectionOrder, NoMatchAnswers,
     CommonPara, NlpSureJudgeDict, NlpPurposConfigDict
 ]
+
+# Restful Api安全相关表
+SECURITY_TABLES = [RestfulApiUser]
 
 
 class QAManager(object):
@@ -76,6 +79,9 @@ class QAManager(object):
 
         # 创建业务表
         AnswerDao.create_tables(ANSWERDB_TABLES)
+
+        # 创建安全机制表
+        AnswerDao.create_tables(SECURITY_TABLES)
 
         # milvus连接参数
         self.milvus_para = copy.deepcopy(milvus_para)
@@ -516,7 +522,9 @@ class QAManager(object):
         """
         # 重建所有数据表（相当于清除数据）
         AnswerDao.drop_tables(ANSWERDB_TABLES)
+        AnswerDao.drop_tables(SECURITY_TABLES)
         AnswerDao.create_tables(ANSWERDB_TABLES)
+        AnswerDao.create_tables(SECURITY_TABLES)
         self._log_info('reset database suceess!')
 
     #############################
@@ -589,9 +597,7 @@ class QAManager(object):
              .where(CollectionOrder.order_num >= order_num)
              .execute())
 
-        CollectionOrder.insert(
-            {'collection': collection, 'order_num': order_num, 'remark': remark}
-        ).execute()
+        CollectionOrder.create(collection=collection, order_num=order_num, remark=remark)
 
         self._log_debug('insert collection [%s] to AnswerDB' % collection)
 

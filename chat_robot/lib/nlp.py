@@ -281,6 +281,27 @@ class NLP(object):
         self._log_debug('question: %s\n%s' % (question, str(_matched_purpose)))
         return _matched_purpose
 
+    def cut_sentence(self, sentence: str, with_class: bool = True) -> list:
+        """
+        进行语句分词
+
+        @param {str} sentence - 要分词的语句
+        @param {bool} with_class=True - 是否包含词性信息
+
+        @returns {list} - 获取到的分词列表
+            如果with_class为False，返回的是词组列表，否则返回的是[(word, flag), ]的含词性的列表
+
+        """
+        _words = pseg.cut(sentence, use_paddle=self.enable_paddle)
+        _words_list = list()  # 完整的词典列表
+        for _word, _flag in _words:
+            if with_class:
+                _words_list.append((_word, _flag))
+            else:
+                _words_list.append(_word)
+
+        return _words_list
+
     #############################
     # 内部函数
     #############################
@@ -407,7 +428,7 @@ if __name__ == '__main__':
     # jieba.suggest_freq('寄快递', True)
     # words = pseg.cut("我要寄快递给广州的黎慧剑", use_paddle=True)  # jieba默认模式
     # words = pseg.cut("我要寄信给广州的黎慧剑", use_paddle=True)  # jieba默认模式
-    words = pseg.cut("我要转账给黎慧剑305元", use_paddle=True)  # jieba默认模式
+    words = pseg.cut("广州的天气", use_paddle=True)  # jieba默认模式
     for word, flag in words:
         print('%s %s' % (word, flag))
 

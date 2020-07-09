@@ -25,7 +25,7 @@ DEPENDENCIES = [
     'flask-cors',
     'flask',
     'flask_restful',
-    'HiveNetLib>=0.8.2',
+    'HiveNetLib>=0.8.3',
     'PyMySQL',
     'peewee',
     'bert-serving-client',

@@ -958,9 +958,8 @@ class QA(object):
                 _type_param[2].update(_matched_info)
             elif _answer.a_type == 'ask':
                 _type_param[4].update(_matched_info)
-                # 需要执行后面的流程将问题
 
-            _answer.type_param = json.dumps(_type_param, ensure_ascii=False)
+            _answer.type_param = str(_type_param)
 
         # 返回结果
         return _collections, _partition, _match_list, _answers
@@ -1170,7 +1169,7 @@ class QA(object):
                     session_id, _back_answers, _answer.replace_pre_def == 'Y', context_id=context_id
                 )
         elif _answer.a_type == 'ask':
-            # 提问类答案处理, 使用answer字段进行提问，type_param的格式为[class_name, fun_name, collection, partition, {para_dict}]
+            # 提问类答案处理, 使用answer字段进行提问，type_param的格式为[class_name, fun_name, collection, partition, {para_dict}, 'true']
             _type_param = eval(_answer.type_param)
 
             _ask_info = {

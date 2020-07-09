@@ -44,6 +44,18 @@ class InitAsk(object):
         return 'ask'
 
     @classmethod
+    def initialize(cls, loader, qa_manager, qa, **kwargs):
+        """
+        装载插件前执行的初始化处理
+        可以不定义
+
+        @param {QAServerLoader} loader - 服务装载器
+        @param {QAManager} qa_manager - 数据管理
+        @param {QA} qa - 问答服务
+        """
+        pass
+
+    @classmethod
     def save_info(cls, question: str, session_id: str, context_id: str, std_question_id: int,
                   collection: str, partition: str,
                   qa: QA, qa_manager: QAManager, **kwargs):

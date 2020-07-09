@@ -44,8 +44,16 @@
     <excel_batch_num type="int">100</excel_batch_num>
     <extend_plugin_path>../test/plugins/</extend_plugin_path>
     <enable_client type="bool">true</enable_client>
+    <add_test_login_user type="bool">true</add_test_login_user>
     <client_path>./client</client_path>
     <debug type="bool">true</debug>
+    <security>
+        <enable_token type="bool">true</enable_token>
+        <secret_key>this is a secret key</secret_key>
+        <token_expire type="int">3600</token_expire>
+        <salt>my_salt_str</salt>
+        <algorithm_name>HS512</algorithm_name>
+    </security>
     <qa_config>
         <use_redis type="bool">true</use_redis>
         <use_nlp type="bool">true</use_nlp>
