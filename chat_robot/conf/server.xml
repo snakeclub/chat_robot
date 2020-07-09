@@ -9,6 +9,11 @@
         add_test_login_user : bool, 是否新增测试登陆用户，test/123456
         client_path : 客户端目录
         debug : 是否是debug模式
+        flask : flask的运行参数设置
+            host : 绑定的主机地址，可以为127.0.0.1或不传
+            port : int, 监听端口
+            threaded : bool, 是否启动多线程
+            processes : int, 进程数
         security : 安全相关配置
             enable_token : 是否启动token验证
             secret_key : 密码加密的服务端密钥
@@ -66,14 +71,18 @@
             connection : 数据库连接配置，详细参数参考redis.Connection
             pool_size : int, 连接池大小
     -->
-    <port type="int">8001</port>
     <excel_engine>xlrd</excel_engine>
     <excel_batch_num type="int">100</excel_batch_num>
-    <extend_plugin_path>../test/plugins</extend_plugin_path>
+    <extend_plugin_path>./ext_plugins</extend_plugin_path>
     <enable_client type="bool">true</enable_client>
     <add_test_login_user type="bool">true</add_test_login_user>
     <client_path>./client</client_path>
     <debug type="bool">true</debug>
+    <flask>
+        <port type="int">8001</port>
+        <threaded type="bool">true</threaded>
+        <processes type="int">1</processes>
+    </flask>
     <security>
         <enable_token type="bool">true</enable_token>
         <secret_key>this is a secret key</secret_key>
@@ -82,7 +91,7 @@
         <algorithm_name>HS512</algorithm_name>
     </security>
     <qa_config>
-        <use_redis type="bool">false</use_redis>
+        <use_redis type="bool">true</use_redis>
         <use_nlp type="bool">true</use_nlp>
         <session_overtime type="float">300.0</session_overtime>
         <session_checktime type="float">60.0</session_checktime>

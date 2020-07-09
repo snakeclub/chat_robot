@@ -171,7 +171,7 @@ class QAServerLoader(object):
         """
         启动Restful Api服务
         """
-        self.app.run(port=self.server_config['port'])
+        self.app.run(**self.server_config['flask'])
 
     #############################
     # 安全认证相关处理
