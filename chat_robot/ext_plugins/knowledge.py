@@ -95,17 +95,17 @@ class KnowledgeChapters(BaseModel):
 #############################
 # 公共参数
 #############################
-KNOWLEDGE_DATA_IMPORT = False  # 是否导入数据，请在导入数据后修改为False
+KNOWLEDGE_DATA_IMPORT = True  # 是否导入数据，请在导入数据后修改为False
 KNOWLEDGE_DATA_PATH = './knowledge'  # 知识库导入文件目录，以当前插件路径为相对路径
 KNOWLEDGE_DATA_FILENAME = 'knowledge_data.xlsx'  # 知识库导入文件名
 
-KNOWLEDGE_RESET_DB = False  # 是否重置数据库，请在导入数据后修改为Fasle
+KNOWLEDGE_RESET_DB = True  # 是否重置数据库，请在导入数据后修改为Fasle
 KNOWLEDGE_DELETE_COLLECTIONS = ['k_jadeite']  # 在重置数据库的情况下，要删除的collecton清单
 KNOWLEDGE_DB_TABLES = [KnowledgeChapters, KnowledgeBooks, KnowledgImages]  # 表清单
 
 UPLOAD_IMAGE_PATH = '../client/static/knowledge/images'  # 上传图片存储路径（需手工放入网站的静态路径中）
 WEB_IMAGE_URL = '/static/knowledge/images/'  # 网站静态图片访问地址
-TRUNCATE_IMAGE_PATH = False  # 是否清空目标图片存储路径
+TRUNCATE_IMAGE_PATH = True  # 是否清空目标图片存储路径
 
 SECTION_NUM_SHOW_LIMIT = 2  # 子段落一次显示的数量
 
@@ -113,7 +113,7 @@ SECTION_NUM_SHOW_LIMIT = 2  # 子段落一次显示的数量
 #############################
 # 控制指令相关配置
 #############################
-RESET_ACTION_DICT = False  # 是否清除指令字典
+RESET_ACTION_DICT = True  # 是否清除指令字典
 ACTION_COLLECTION = 'knowledge'  # 固定的控制意图匹配问题分类
 ACTION_PARTITION = 'control'  # 固定的控制意图匹配问题分类场景
 # 指令字典，与NlpPurposConfigDict的配置一致，注意关键词要加到用户字典中
