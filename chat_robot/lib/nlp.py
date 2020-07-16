@@ -120,19 +120,19 @@ class NLP(object):
     # 公共函数
     #############################
 
-    def analyse_purpose(self, question: str, collections: list = None, partition: str = None, is_multiple: bool = False):
+    def analyse_purpose(self, question: str, collection: str = None, partition: str = None, is_multiple: bool = False):
         """
         猜测问题意图
 
         @param {str} question - 问题句子
-        @param {list} collection=None - 指定从特定的问题分类中分析
+        @param {str} collection=None - 指定从特定的问题分类中分析
         @param {str} partition=None - 指定从特定的问题场景中分析
         @param {bool} is_multiple=False - 是否返回多个意图
 
         @return {list} - 匹配到的问题意图，如果返回的是[]代表没有匹配到意图
             [
                 {
-                    'action': '意图动作', 'collection': '意图所在分类', 'partition': '意图场景(可以为None)',
+                    'action': '意图动作', 'collection': '意图对应问题分类', 'partition': '意图对应场景(可以为None)',
                     'is_sure': str_sure/negative/uncertain, 'order_num': int_优先顺序(降序),
                     'std_question_id': int_对应问题id, 'info': dict_意图特定信息
                 },
@@ -140,20 +140,38 @@ class NLP(object):
             ]
         """
         _purpose = list()
-        if len(question) == 0:
+        _question_len = len(question)
+        _collection = collection
+        _partition = partition
+        if collection == '':
+            _collection = None
+        if partition == '':
+            _partition = None
+
+        if _question_len == 0:
             # 空语句不处理
             return _purpose
 
-        _amount_sign_list = eval(self.DATA_MANAGER_PARA.get('common_para', {})
-                                 .get('amount_sign_list', "['$', '￥']"))
+        _amount_sign_list = self.DATA_MANAGER_PARA.get(
+            'common_para', {}).get('amount_sign_list', ['$', '￥'])
         _purpose_config_dict = self.DATA_MANAGER_PARA.get('nlp_purpos_config_dict', {})
-
-        _words = pseg.cut(question, use_paddle=self.enable_paddle)
-        _words_list = list()  # 完整的词典列表
-        _s_start = 0  # 当前语句开始
 
         _matched_list = list()  # 匹配清单，用于控制不重复匹配
         _matched_in_s = list()  # 当前语句的匹配信息
+
+        # 精确匹配
+        _exact_match_dict = _purpose_config_dict[_collection][_partition]['exact_match']
+        for _temp_action in _exact_match_dict:
+            _temp_question = question.lower() if _exact_match_dict[_temp_action][1] else question
+            if _temp_question in _exact_match_dict[_temp_action][0]:
+                # 匹配到关键字
+                if _temp_action not in _matched_list:
+                    _matched_in_s.append([_temp_action, _temp_question, 'exact_match'])
+
+        # 分词匹配
+        _words = pseg.cut(question, use_paddle=self.enable_paddle)
+        _words_list = list()  # 完整的词典列表
+        _s_start = 0  # 当前语句开始
 
         # 循环分析句子
         _word, _flag = _words.__next__()  # 当前词，作为开始
@@ -200,13 +218,15 @@ class NLP(object):
 
             # 匹配处理
             if (_flag == 'x' and _word != ' ') or _word in ('.'):
-                for _action, _match_word, _collection, _partition in _matched_in_s:
-                    # 处理意图列表
-                    _config = _purpose_config_dict[_collection][_partition][_action]
+                for _action, _match_word, _match_type in _matched_in_s:
+                    # 处理意图列表，注意这里也会有精确匹配的动作清单
+                    _config = _purpose_config_dict[_collection][_partition]['actions'][_action]
                     _purpose.append(
                         {
-                            'action': _action, 'collection': _collection, 'partition': _partition,
+                            'action': _action, 'collection': _config['collection'],
+                            'partition': _config['partition'],
                             'match_word': _match_word,
+                            'match_type': _match_type,
                             'is_sure': self._judge_is_sure(_words_list[_s_start: len(_words_list)]),
                             'order_num': _config['order_num'],
                             'std_question_id': _config['std_question_id'],
@@ -218,14 +238,14 @@ class NLP(object):
                 _matched_in_s.clear()  # 清空当前语句的匹配数据
             else:
                 # 使用词尝试匹配动作
-                _action, _match_word, _collection, _partition = self._match_purpose(
-                    _word, collections, partition)
-                if _action != '':
-                    # 匹配到动作
-                    _match_str = '%s,%s,%s' % (_action, str(_collection), str(_partition))
-                    if _match_str not in _matched_list:
-                        _matched_list.append(_match_str)  # 登记避免重复
-                        _matched_in_s.append([_action, _match_word, _collection, _partition])
+                _temp_matched_list = self._match_purpose(
+                    _word, _question_len, _collection, _partition)
+                for _action, _match_word in _temp_matched_list:
+                    if _action != '':
+                        # 匹配到动作
+                        if _action not in _matched_list:
+                            _matched_list.append(_action)  # 登记避免重复
+                            _matched_in_s.append([_action, _match_word, 'nlp_match'])  # 标注是分词匹配模式的
 
             # 进入下一轮循环
             if _next_word == '':
@@ -241,14 +261,15 @@ class NLP(object):
         # 进行意图的检查
         _matched_purpose = []
         for _pitem in _purpose:
-            _config = _purpose_config_dict[_pitem['collection']
-                                           ][_pitem['partition']][_pitem['action']]
+            _config = _purpose_config_dict[_collection
+                                           ][_partition]['actions'][_pitem['action']]
             if len(_config['check']) > 0:
                 # 需要进行检查
                 _check_fun = self.plugins['nlpcheck'][_config['check'][0]][_config['check'][1]]
                 if not _check_fun(
                     question, _words_list,
-                    _pitem['action'], _pitem['match_word'], _pitem['collection'], _pitem['partition'],
+                    _pitem['action'], _pitem['match_word'], _pitem['match_type'],
+                    _pitem['collection'], _pitem['partition'],
                     _config['std_question_id'], **_config['check'][2]
                 ):
                     # 检查未通过，继续检查下一个
@@ -266,14 +287,15 @@ class NLP(object):
 
         # 获取意图特定信息
         for _pitem in _matched_purpose:
-            _config = _purpose_config_dict[_pitem['collection']
-                                           ][_pitem['partition']][_pitem['action']]
+            _config = _purpose_config_dict[_collection
+                                           ][_partition]['actions'][_pitem['action']]
 
-            if len(_config['info']) > 0:
+            if len(_config['info']) > 0 and _pitem['match_type'] == 'nlp_match':
                 _get_info_fun = self.plugins['nlpinfo'][_config['info'][0]][_config['info'][1]]
                 _info_dict = _get_info_fun(
                     question, _words_list,
-                    _pitem['action'], _pitem['match_word'], _pitem['collection'], _pitem['partition'],
+                    _pitem['action'], _pitem['match_word'], _pitem['match_type'],
+                    _pitem['collection'], _pitem['partition'],
                     _config['std_question_id'], **_config['info'][2]
                 )
                 _pitem['info'].update(_info_dict)
@@ -281,25 +303,71 @@ class NLP(object):
         self._log_debug('question: %s\n%s' % (question, str(_matched_purpose)))
         return _matched_purpose
 
-    def cut_sentence(self, sentence: str, with_class: bool = True) -> list:
+    def cut_sentence(self, sentence: str) -> list:
         """
         进行语句分词
 
         @param {str} sentence - 要分词的语句
-        @param {bool} with_class=True - 是否包含词性信息
 
-        @returns {list} - 获取到的分词列表
-            如果with_class为False，返回的是词组列表，否则返回的是[(word, flag), ]的含词性的列表
-
+        @returns {list} - 获取到的分词列表[(word, flag), ]
         """
+        _amount_sign_list = self.DATA_MANAGER_PARA.get(
+            'common_para', {}).get('amount_sign_list', ['$', '￥'])
         _words = pseg.cut(sentence, use_paddle=self.enable_paddle)
         _words_list = list()  # 完整的词典列表
-        for _word, _flag in _words:
-            if with_class:
-                _words_list.append((_word, _flag))
-            else:
-                _words_list.append(_word)
 
+        # 循环分析句子
+        _word, _flag = _words.__next__()  # 当前词，作为开始
+        _last_word, _last_flag = '', ''  # 上一词
+        _next_word, _next_flag = '', ''  # 下一词
+        _stop_iter = False  # 是否结束循环
+        while True:
+            # 获取下一个词
+            try:
+                if not _stop_iter:
+                    _next_word, _next_flag = _words.__next__()
+                else:
+                    _next_word, _next_flag = '', ''
+            except StopIteration:
+                # 找不到, 打上退出循环的标记
+                _stop_iter = True
+                _next_word, _next_flag = '.', 'x'  # 增加一个句号，简化处理逻辑
+
+            # 处理_words_list
+            if _flag == 'm' and (_last_flag == 'm' or _last_word in _amount_sign_list):
+                # 上一个字是币种标志, 或者上一个字是数量, 合并到上一个词中
+                _word = _words_list[-1][0] + _word
+                _words_list[-1][0] = _word
+                _words_list[-1][1] = 'm'
+            elif _word == ',' and _last_flag == 'm' and _next_flag == 'm':
+                # m , m 的形式，统一合并到上一个词中
+                _word = _last_word + _word + _next_word
+                _flag = 'm'
+                _words_list[-1][0] = _word
+                _words_list[-1][1] = _flag
+                # 由于已经使用了next，再获取一次next
+                try:
+                    if not _stop_iter:
+                        _next_word, _next_flag = _words.__next__()
+                    else:
+                        _next_word, _next_flag = '', ''
+                except StopIteration:
+                    # 找不到, 打上退出循环的标记
+                    _stop_iter = True
+                    _next_word, _next_flag = '.', 'x'  # 增加一个句号，简化处理逻辑
+            else:
+                # 正常的新词, 添加到_words_list中
+                _words_list.append([_word, _flag])
+
+            # 进入下一轮循环
+            if _next_word == '':
+                break
+            else:
+                _last_word, _last_flag = _word, _flag
+                _word, _flag = _next_word, _next_flag
+                continue
+
+        # 返回结果
         return _words_list
 
     #############################
@@ -343,37 +411,33 @@ class NLP(object):
 
         return _is_sure
 
-    def _match_purpose(self, word: str, collections: list = None, partition: str = None):
+    def _match_purpose(self, word: str, question_len: int,
+                       collection: str = None, partition: str = None):
         """
         按单词匹配意图动作
 
         @param {str} word - 要匹配的单词
-        @param {list} collection=None - 指定从特定的问题分类中分析
+        @param {int} question_len - 问题语句长度, 用于算比例
+        @param {str} collection=None - 指定从特定的问题分类中分析
         @param {str} partition=None - 指定从特定的问题场景中分析
 
-        @returns {str,str, str,str} - action, word, collection, partition
+        @returns {list} - [(action, word), ...]
         """
         # 简化逻辑处理
-        _partition = partition
-        if partition == '':
-            _partition = None
-
-        _collections = collections
-        if _collections is None:
-            _collections = [None, ]
-
         _purpose_config_dict = self.DATA_MANAGER_PARA.get('nlp_purpos_config_dict', {})
+        _collection_dict = _purpose_config_dict.get(collection, {})
+        _partition_dict = _collection_dict.get(partition, {})
+        _match_dict = _partition_dict.get('match', {})
 
-        # 遍历查找
-        for _collection in _collections:
-            _collection_dict = _purpose_config_dict.get(_collection, {})
-            _partition_dict = _collection_dict.get(_partition, {})
-            for _action in _partition_dict.keys():
-                if word in _partition_dict[_action]['match_words']:
-                    return _action, word, _collection, _partition
+        _matched_list = list()
+        for _action in _match_dict.keys():
+            _word = word.lower() if _match_dict[_action][1] else word
+            if _word in _match_dict[_action][0]:
+                if _match_dict[_action][2] <= 0.0 or (len(word) / question_len) >= _match_dict[_action][2]:
+                    _matched_list.append((_action, word))
 
         # 没有找到
-        return '', '', None, None
+        return _matched_list
 
     #############################
     # 日志输出相关函数
@@ -428,11 +492,12 @@ if __name__ == '__main__':
     # jieba.suggest_freq('寄快递', True)
     # words = pseg.cut("我要寄快递给广州的黎慧剑", use_paddle=True)  # jieba默认模式
     # words = pseg.cut("我要寄信给广州的黎慧剑", use_paddle=True)  # jieba默认模式
-    words = pseg.cut("广州的天气", use_paddle=True)  # jieba默认模式
-    for word, flag in words:
-        print('%s %s' % (word, flag))
+    # words = pseg.cut("下一个前一个上一个向前向后", use_paddle=True)  # jieba默认模式
+    # for word, flag in words:
+    #     print('%s %s' % (word, flag))
 
     # words = pseg.cut("我不是要转账")
     # # # words = pseg.cut("要怎么转账", use_paddle=True)  # jieba默认模式
     # for word, flag in words:
     #     print('%s %s' % (word, flag))
+    print(1 / 3)

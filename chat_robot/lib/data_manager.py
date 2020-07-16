@@ -17,7 +17,7 @@ import sys
 import copy
 import math
 import time
-import json
+import collections as cs
 import re
 import traceback
 from functools import reduce
@@ -25,11 +25,10 @@ import numpy as np
 import milvus as mv
 import pandas as pd
 from bert_serving.client import BertClient
-from HiveNetLib.base_tools.run_tool import RunTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, RestfulApiUser
+from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, RestfulApiUser, UploadFileConfig
 
 
 __MOUDLE__ = 'data_manager'  # 模块名
@@ -42,7 +41,7 @@ __PUBLISH__ = '2020.06.24'  # 发布日期
 # 答案库表清单
 ANSWERDB_TABLES = [
     Answer, StdQuestion, ExtQuestion, CollectionOrder, NoMatchAnswers,
-    CommonPara, NlpSureJudgeDict, NlpPurposConfigDict
+    CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, UploadFileConfig
 ]
 
 # Restful Api安全相关表
@@ -165,7 +164,8 @@ class QAManager(object):
             _para_dict = dict()
             _query = CommonPara.select(CommonPara.para_name, CommonPara.para_value)
             for _row in _query:
-                _para_dict[_row.para_name] = _row.para_value
+                # 注意值为python对象
+                _para_dict[_row.para_name] = eval(_row.para_value)
 
             # 更新内存
             self.DATA_MANAGER_PARA['common_para'].update(_para_dict)
@@ -193,16 +193,45 @@ class QAManager(object):
         """
         if self.load_para:
             _pupos_config = dict()
-            _query = NlpPurposConfigDict.select().order_by(NlpPurposConfigDict.order_num.desc())
+            _query = NlpPurposConfigDict.select().order_by(NlpPurposConfigDict.order_num.desc())  # 需按倒序给出
             for _row in _query:
                 try:
-                    _collection = _row.collection if _row.collection is not None and _row.collection != '' else None
-                    _partition = _row.partition if _row.partition is not None and _row.partition != '' else None
+                    _collection = _row.match_collection if _row.match_collection is not None and _row.match_collection != '' else None
+                    _partition = _row.match_partition if _row.match_partition is not None and _row.match_partition != '' else None
                     _pupos_config.setdefault(_collection, {})
                     _pupos_config[_collection].setdefault(_partition, {})
-                    _pupos_config[_collection][_partition][_row.action] = {
-                        'match_words': eval('[]' if _row.match_words == '' else _row.match_words),
+                    _pupos_config[_collection][_partition].setdefault('actions', {})
+                    _pupos_config[_collection][_partition].setdefault(
+                        'exact_match', cs.OrderedDict()
+                    )  # 有序字典
+                    _pupos_config[_collection][_partition].setdefault(
+                        'match', cs.OrderedDict()
+                    )  # 有序字典
+                    _match_words = '[]' if _row.match_words == '' else _row.match_words
+                    _match_words = eval(
+                        _match_words if _row.ignorecase != 'Y' else _match_words.lower()
+                    )  # 如果是忽略大小写，统一变为小写
+                    _exact_match_words = '[]' if _row.exact_match_words == '' else _row.exact_match_words
+                    _exact_match_words = eval(
+                        _exact_match_words if _row.exact_ignorecase != 'Y' else _exact_match_words.lower()
+                    )
+                    if len(_exact_match_words) > 0:
+                        # 专门针对精确匹配的匹配信息
+                        _pupos_config[_collection][_partition]['exact_match'][_row.action] = [
+                            _exact_match_words, (_row.exact_ignorecase == 'Y')
+                        ]
+
+                    if len(_match_words) > 0:
+                        # 专门针对分词匹配的匹配信息
+                        _pupos_config[_collection][_partition]['match'][_row.action] = [
+                            _match_words, (_row.ignorecase == 'Y'), _row.word_scale
+                        ]
+
+                    # 意图相应配置
+                    _pupos_config[_collection][_partition]['actions'][_row.action] = {
                         'order_num': _row.order_num,
+                        'collection': _row.collection if _row.collection is not None and _row.collection != '' else None,
+                        'partition': _row.partition if _row.partition is not None and _row.partition != '' else None,
                         'std_question_id': _row.std_question_id,
                         'info': eval('[]' if _row.info == '' else _row.info),
                         'check': eval('[]' if _row.check == '' else _row.check),
@@ -234,7 +263,35 @@ class QAManager(object):
         @param {str} collection - 要删除的问题分类
         @param {bool} with_question=False - 是否同时删除对应的问题
         """
-        pass
+        # 删除collection_order
+        _ret = CollectionOrder.delete().where(CollectionOrder.collection == collection).execute()
+        self._log_debug(
+            'Delete collection_order with collection [%s] success: %s' % (collection, str(_ret))
+        )
+
+        # 删除collection
+        self.delete_milvus_collection([collection, ], truncate=False)
+
+        # 删除问题，包括扩展问题，问题答案
+        if with_question:
+            _std_q_list = StdQuestion.select(StdQuestion.id).where(
+                StdQuestion.collection == collection
+            )
+            # 删除扩展问题
+            _ret = ExtQuestion.delete().where(ExtQuestion.std_question_id.in_(_std_q_list)).execute()
+            self._log_debug(
+                'Delete ext_question with collection [%s] success: %s' % (collection, str(_ret))
+            )
+            # 删除答案
+            _ret = Answer.delete().where(Answer.std_question_id.in_(_std_q_list)).execute()
+            self._log_debug(
+                'Delete answer with collection [%s] success: %s' % (collection, str(_ret))
+            )
+            # 删除标准问题
+            _ret = StdQuestion.delete().where(StdQuestion.collection == collection).execute()
+            self._log_debug(
+                'Delete std_question with collection [%s] success: %s' % (collection, str(_ret))
+            )
 
     def switch_collection_order(self, collection_a: str, collection_b: str):
         """
@@ -325,7 +382,8 @@ class QAManager(object):
         return _result
 
     def add_std_question(self, question: str, collection: str = 'chat', q_type: str = 'ask',
-                         partition: str = None, answer: str = None, a_type: str = 'text', a_type_param: str = '') -> int:
+                         partition: str = None, answer: str = None, a_type: str = 'text',
+                         replace_pre_def: str = 'N', a_type_param: str = '') -> int:
         """
         添加标准问题
 
@@ -338,6 +396,7 @@ class QAManager(object):
         @param {str} answer=None - 标准问题对应的答案
         @param {string} a_type='text' - 答案类型
             text-文字答案
+        @param {str} replace_pre_def='N' - 是否替换答案的预定义字符
         @param {string} a_type_param='' - 答案类型扩展参数
         @returns {int} - 返回问题记录对应的id
         """
@@ -349,7 +408,7 @@ class QAManager(object):
         with self.get_bert_client() as _bert, self.get_milvus() as _milvus:
             _vectors = _bert.encode([question, ])
             _question_vectors = self.normaliz_vec(_vectors.tolist())
-            self._log_debug('get question vectors: %s' % str(_question_vectors))
+            self._log_debug('get question vectors: %s' % str(len(_question_vectors)))
 
             # 存入Milvus服务, 先创建分类
             self._add_collection(collection, _milvus)
@@ -376,7 +435,7 @@ class QAManager(object):
             # 插入对应的答案
             if answer is not None:
                 Answer.create(
-                    std_question_id=_std_q.id, a_type=a_type,
+                    std_question_id=_std_q.id, a_type=a_type, replace_pre_def=replace_pre_def,
                     type_param=a_type_param, answer=answer
                 )
 
@@ -406,7 +465,7 @@ class QAManager(object):
         with self.get_bert_client() as _bert:
             _vectors = _bert.encode([question, ])
             _question_vectors = self.normaliz_vec(_vectors.tolist())
-            self._log_debug('get question vectors: %s' % str(_question_vectors))
+            self._log_debug('get question vectors: %s' % str(len(_question_vectors)))
 
         # 存入Milvus服务
         with self.get_milvus() as _milvus:
@@ -461,6 +520,10 @@ class QAManager(object):
             self._import_nlp_purpos_config_dict_by_xls(
                 _excel_io, _milvus, _bert, _std_question_id_mapping)
 
+            # 处理UploadFileConfig
+            self._import_upload_file_config_by_xls(
+                _excel_io, _milvus, _bert, _std_question_id_mapping)
+
     def truncate_all_questions(self):
         """
         清空所有问题组(慎用)
@@ -513,6 +576,8 @@ class QAManager(object):
                     _milvus.drop_collection(_collection), 'drop_collection'
                 )
 
+        # 清空清单
+        self.sorted_collection = list()
         # 执行完成
         self._log_info('delete milvus collections %s suceess!' % str(_clist))
 
@@ -1042,12 +1107,6 @@ class QAManager(object):
                 for _index, _row in _df.iterrows():
                     # 逐行添加标准问题答案, _index为行，_row为数据集
                     try:
-                        _collection = _row['collection'] if str(
-                            _row['collection']) != 'nan' and _row['collection'] != '' else None
-
-                        _partition = _row['partition'] if str(
-                            _row['partition']) != 'nan' and _row['partition'] != '' else None
-
                         _std_question_id = std_question_id_mapping.get(
                             _row['std_question_id'], _row['std_question_id']
                         )
@@ -1066,11 +1125,26 @@ class QAManager(object):
 
                         NlpPurposConfigDict.create(
                             action=_row['action'],
-                            collection=_collection,
-                            partition=('' if _partition is None else _partition),
+                            match_collection=_row['match_collection'] if str(
+                                _row['match_collection']) != 'nan' else '',
+                            match_partition=_row['match_partition'] if str(
+                                _row['match_partition']) != 'nan' else '',
+                            collection=_row['collection'] if str(
+                                _row['collection']) != 'nan' else '',
+                            partition=_row['partition'] if str(
+                                _row['partition']) != 'nan' else '',
                             std_question_id=_std_question_id,
                             order_num=_row['order_num'],
-                            match_words=_row['match_words'],
+                            exact_match_words=_row['exact_match_words'] if str(
+                                _row['exact_match_words']) != 'nan' else '[]',
+                            exact_ignorecase=_row['exact_ignorecase'] if str(
+                                _row['exact_ignorecase']) != 'nan' else 'N',
+                            match_words=_row['match_words'] if str(
+                                _row['match_words']) != 'nan' else '[]',
+                            ignorecase=_row['ignorecase'] if str(
+                                _row['ignorecase']) != 'nan' else 'N',
+                            word_scale=_row['word_scale'] if str(
+                                _row['word_scale']) != 'nan' else 0.0,
                             info=_info, check=_check
                         )
                     except:
@@ -1083,6 +1157,50 @@ class QAManager(object):
                 self.load_nlp_purpos_config_dict()
 
                 self._log_debug('imported nlp_purpos_config_dict[%d]: %s' % (_skiprows, str(_df)))
+
+    def _import_upload_file_config_by_xls(self, excel_io, milvus: mv.Milvus, bert: BertClient,
+                                          std_question_id_mapping: dict):
+        """
+        导入UploadFileConfig
+
+        @param {object} excel_io - pd.io.excel.ExcelFile的IO文件
+        @param {Milvus} milvus - Milvus连接对象
+        @param {BertClient} bert - bert服务连接对象
+        @param {dict} std_question_id_mapping - 标准问题id映射字典
+        """
+        try:
+            # 读取文件，第0行为标题行
+            _df = pd.read_excel(
+                excel_io, sheet_name='UploadFileConfig', header=0, engine=self.excel_engine
+            )
+            # 指定所需的列
+            _df = _df[['upload_type', 'exts', 'size', 'save_path', 'url', 'rename', 'after', 'remark']]
+        except:
+            _df = None  # 没有获取到指定的页
+
+        if _df is not None:
+            for _index, _row in _df.iterrows():
+                # 逐行添加分类集, _index为行，_row为数据集
+                try:
+                    UploadFileConfig.create(
+                        upload_type=_row['upload_type'],
+                        exts=_row['exts'] if str(
+                            _row['exts']) != 'nan' and _row['exts'] != '' else '[]',
+                        size=_row['exts'] if str(
+                            _row['exts']) != 'nan' and _row['exts'] != '' else 0,
+                        save_path=_row['save_path'],
+                        url=_row['url'] if str(_row['url']) != 'nan' else '',
+                        rename=_row['rename'] if str(_row['rename']) != 'nan' else '',
+                        after=_row['after'] if str(
+                            _row['after']) != 'nan' and _row['after'] != '' else '[]',
+                        remark=_row['remark'] if str(_row['remark']) != 'nan' else ''
+                    )
+                except:
+                    self._log_error('import upload_file_config [%s] [%s] error: %s' % (
+                        _row['upload_type'], _row['remark'], traceback.format_exc()
+                    ))
+
+            self._log_debug('imported upload_file_config: %s' % str(_df))
 
     #############################
     # 日志输出相关函数

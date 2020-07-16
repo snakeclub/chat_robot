@@ -53,8 +53,8 @@ class InitCheck(object):
         pass
 
     @classmethod
-    def check_by_nest(cls, question: str, words: list, action: str, match_word: str, collection: str,
-                      partition: str, std_question_id: int, **kwargs):
+    def check_by_nest(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                      collection: str, partition: str, std_question_id: int, **kwargs):
         """
         根据紧靠匹配动作词的词组否决意图
 
@@ -62,6 +62,7 @@ class InitCheck(object):
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
         @param {str} match_word - 匹配上的词
+        @param {str} match_type - 匹配类型，exact_match-精确匹配，nlp_match-分词匹配
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id

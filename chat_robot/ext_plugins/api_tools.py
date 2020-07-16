@@ -34,12 +34,12 @@ __AUTHOR__ = u'黎慧剑'  # 作者
 __PUBLISH__ = '2020.07.07'  # 发布日期
 
 
-CITY_DATA_PATH = ''  # 城市数据文件路径，注意如果是相对路径，是以插件文件所在路径开始
+CITY_DATA_PATH = './api_tools'  # 城市数据文件路径，注意如果是相对路径，是以插件文件所在路径开始
 CITY_DATA_FILENAME = 'city_data.json'  # 城市数据文件名
 CITY_DATA_FORCE_UPDATE = False  # 指定强制更新数据
 
 WEATHER_TRY_USE_IP_ADDR = True  # 如果没有客户地址信息，尝试通过IP地址获取
-WEATHER_COLLECTION = 'chat'  # 天气问题的分类集
+WEATHER_COLLECTION = 'test_chat'  # 天气问题的分类集, 需注意修改
 WEATHER_PARTITION = ''  # 天气问题的特殊场景
 WEATHER_ERROR = u'亲, 没有找到您需要的天气信息'  # 没有找到天气信息返回的回答
 
@@ -93,6 +93,7 @@ class ApiToolAsk(object):
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
             'to', int - 跳转到指定问题处理，第二个参数为std_question_id
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
+            'break', [collection, partition] - 跳出问题(让问题继续走匹配流程)，可以返回[collection, partition]变更分类和场景
             默认为'again'
         """
         _match_city_code = ''
@@ -132,8 +133,10 @@ class ApiToolAsk(object):
                         )
 
                     if _addr != '':
+                        _addrs_with_class = qa.nlp.cut_sentence(_addr)
+                        _addrs = [item[0] for item in _addrs_with_class]
                         _match_addr = cls._search_city(
-                            qa.nlp.cut_sentence(_addr, with_class=False), _redis
+                            _addrs, _redis
                         )
 
                 _len = len(_match_addr)
@@ -393,7 +396,8 @@ class ApiToolAsk(object):
         # 检查配置是否已经增加
         if (StdQuestion.select()
                 .where(
-                    StdQuestion.milvus_id == -1 and StdQuestion.q_type == 'context' and StdQuestion.question == '天气问答'
+                    (StdQuestion.milvus_id == -1) & (StdQuestion.q_type ==
+                                                     'context') & (StdQuestion.question == '天气问答')
         ).count()) > 0:
             if _logger is not None:
                 _logger.info('Weather config already exists!')
@@ -419,11 +423,14 @@ class ApiToolAsk(object):
         # 插入NLP意图识别配置
         NlpPurposConfigDict.create(
             action='天气查询',
+            match_collection='', match_partition='',
             collection=WEATHER_COLLECTION,
             partition=WEATHER_PARTITION,
             std_question_id=_std_q.id,
             order_num=0,
+            exact_match_words='[]', exact_ignorecase='N',
             match_words="['天气', '今天天气']",
+            ignorecase='N', word_scale=0.0,
             info="['InitInfo', 'get_wordclass_list', {'condition': [{'key': 'time', 'class': ['t']}, {'key': 'addr', 'class': ['ns']}]}]",
             check="['InitCheck', 'check_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]"
         )
@@ -456,13 +463,3 @@ if __name__ == '__main__':
            '作者：%s\n'
            '发布日期：%s\n'
            '版本：%s' % (__MOUDLE__, __DESCRIPT__, __AUTHOR__, __PUBLISH__, __VERSION__)))
-
-    _pool = redis.ConnectionPool(max_connections=100, host='10.16.85.63',
-                                 port=6379, decode_responses=True)
-    _r = redis.Redis(connection_pool=_pool)
-    print(_r.hgetall('api_tool_ask:weather:city_data:index:肥东县'))
-    print(_r.hgetall('api_tool_ask:weather:city_data:3406'))
-
-    _time = datetime.datetime.now()
-    _str = _time.strftime('%Y-%m-%d').replace('-0', '-')
-    print(_str)

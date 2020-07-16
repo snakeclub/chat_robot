@@ -166,22 +166,28 @@ class NlpPurposConfigDict(BaseModel):
     nlp模块意图配置字典
     """
     action = pw.CharField(index=True)  # 匹配动作
-    collection = pw.CharField()  # 搜索问题所属分类集
-    partition = pw.CharField(default='')  # 搜索问题所属场景
+    match_collection = pw.CharField(default='')  # 搜索意图使用的匹配分类，空代表None，
+    match_partition = pw.CharField(default='')  # 搜索意图使用的场景，空代表None，
+    collection = pw.CharField(default='')  # 意图对应的问题所属分类, 空代表None，匹配后返回该分类
+    partition = pw.CharField(default='')  # 意图对应的问题所属场景，空代表None，匹配后返回该场景
     std_question_id = pw.BigIntegerField()  # 意图对应的标准问题ID
     order_num = pw.IntegerField()  # 匹配排序，越大排序越高
-    match_words = pw.CharField(max_length=4000, default='[]')  # 可以匹配意图的词组
+    exact_match_words = pw.CharField(max_length=2000, default='[]')  # 整个问题进行精确匹配意图的词组，第一优先匹配
+    exact_ignorecase = pw.CharField(default='N')  # 精确匹配是否忽略大小写
+    match_words = pw.CharField(max_length=2000, default='[]')  # 按分词匹配意图的词组，第三优先匹配
+    ignorecase = pw.CharField(default='N')  # 分词匹配是否忽略大小写
+    word_scale = pw.FloatField(default=0.0)  # 匹配词占整个句子的比例(字符数对比)，超过该比例才认为匹配上
     # 意图信息的获取处理函数配置，格式为 [class_name, fun_name, {para_dict}]
-    info = pw.CharField(max_length=4000, default='[]')
+    info = pw.CharField(max_length=2000, default='[]')
     # 意图检测函数配置，可以通过该配置剔除一些特殊情况，格式为[class_name, fun_name, {para_dict}]
-    check = pw.CharField(max_length=4000, default='[]')
+    check = pw.CharField(max_length=2000, default='[]')
 
     class Meta:
         # 定义数据库表名
         table_name = 'nlp_purpos_config_dict'
         indexes = (
             # 多列唯一索引
-            (('action', 'collection', 'partition'), True),
+            (('action', 'match_collection', 'match_partition'), True),
         )
 
 
@@ -197,6 +203,33 @@ class RestfulApiUser(BaseModel):
     class Meta:
         # 定义数据库表名
         table_name = 'restful_api_user'
+
+
+# 文件上传相关控制配置
+class UploadFileConfig(BaseModel):
+    """
+    文件上传控制参数
+    """
+    upload_type = pw.CharField(primary_key=True)  # 上传类型，即上传最后url的类型字符串
+    exts = pw.CharField()  # 文件扩展名清单，不区分大小写，格式为['扩展名', '扩展名', ...] ，如果不限制扩展名则设置为 []
+    size = pw.FloatField(default=0)  # 上传文件大小限制，单位为MB，0代表不限制
+    save_path = pw.CharField()  # 文件保存路径
+    url = pw.CharField(default='')  # 文件保存路径的访问url地址，空代表不允许外部访问
+    # 文件重命名规则（包含扩展名），支持替换符:
+    # 时间 - {$datetime=%Y%m%d%H%M%S$} 按格式化字符替换当前的时间
+    # uuid - {$uuid=1/2/4$} 指定uuid字符类型，支持1/2/4三种
+    # 随机数 - {$random=0,100$} 产生指定两个整数之间的随机数，总位数与最大的数一致，左补零
+    # 原文件扩展名 - {$file_ext=$} 值为空即可
+    # 原文件指定位置的字符 - {$file_name=0,2$}  后面两个整数指定获取什么位置，从0开始，可以使用负数，后一个数字可为空
+    # 空代表使用原文件名
+    rename = pw.CharField(default='')
+    # 上传文件后的处理插件，格式为['插件类名', '插件函数名', {插件调用扩展参数}]
+    after = pw.CharField(default='[]')
+    remark = pw.CharField(default='')
+
+    class Meta:
+        # 定义数据库表名
+        table_name = 'upload_file_config'
 
 
 # 重定义数据库对象

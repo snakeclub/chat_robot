@@ -53,8 +53,8 @@ class InitInfo(object):
         pass
 
     @classmethod
-    def get_by_question(cls, question: str, words: list, action: str, match_word: str, collection: str,
-                        partition: str, std_question_id: int, **kwargs):
+    def get_by_question(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                        collection: str, partition: str, std_question_id: int, **kwargs):
         """
         通用根据问题本身信息函数
 
@@ -62,6 +62,7 @@ class InitInfo(object):
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
         @param {str} match_word - 匹配上的词
+        @param {str} match_type - 匹配类型，exact_match-精确匹配，nlp_match-分词匹配
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id
@@ -103,8 +104,8 @@ class InitInfo(object):
         return _info
 
     @classmethod
-    def get_by_words(cls, question: str, words: list, action: str, match_word: str, collection: str,
-                     partition: str, std_question_id: int, **kwargs):
+    def get_by_words(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                     collection: str, partition: str, std_question_id: int, **kwargs):
         """
         通用获取词信息函数
 
@@ -112,6 +113,7 @@ class InitInfo(object):
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
         @param {str} match_word - 匹配上的词
+        @param {str} match_type - 匹配类型，exact_match-精确匹配，nlp_match-分词匹配
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id
@@ -193,8 +195,8 @@ class InitInfo(object):
         return _info
 
     @classmethod
-    def get_wordclass_list(cls, question: str, words: list, action: str, match_word: str, collection: str,
-                           partition: str, std_question_id: int, **kwargs):
+    def get_wordclass_list(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                           collection: str, partition: str, std_question_id: int, **kwargs):
         """
         获取词性对应的词列表
 
@@ -202,6 +204,7 @@ class InitInfo(object):
         @param {list} words - 分词列表
         @param {str} action - 匹配上的意图
         @param {str} match_word - 匹配上的词
+        @param {str} match_type - 匹配类型，exact_match-精确匹配，nlp_match-分词匹配
         @param {str} collection - 意图所属问题分类
         @param {str} partition - 意图所属场景
         @param {int} std_question_id - 对应标准问题id

@@ -63,6 +63,7 @@
             </div></div>";
         // 添加到聊天记录结尾
         $("#chat_logs").append(html);
+        $("#chat_logs").scrollTop($("#chat_logs").get(0).scrollHeight);
     };
 
     // 聊天记录中增加答案
@@ -109,6 +110,31 @@
         );
     };
 
+    // 处理知识内容展示
+    $.AddKnowledgeContent = function(content, title) {
+        // 先组织内容
+        var html = "<table class=\"KnowledgeTable\"><tr><td>";
+        if (title && title != "") { // 有标题的情况
+            html += "<a class=\"KnowledgeTitle\">" + title + "</a></td></tr><tr><td>";
+        }
+        // 处理图片
+        if (content.images != null) {
+            html += "<div class=\"KnowledgeImgContainer KnowledgeImgContainer";
+            if (content.images.para == 'rigth') {
+                html += "Right\">";
+            } else {
+                html += "Left\">";
+            }
+            html += "<img src=\"" + content.images.url + "\" alt=\"" + content.images.notes + "\" />";
+            html += "<br /><a>" + content.images.notes + "</a></div>"
+        }
+        // 处理内容
+        html += "<p>" + content.content + "</p></td></tr></table>";
+
+        // 添加到答案中
+        $.AddAnswer(html);
+    };
+
     //执行登陆动作
     $.AjaxLogin = function(username, password) {
         // 生成调用参数
@@ -140,7 +166,7 @@
 
     $.AjaxGenerateToken = function() {
         $.ajax({
-            url: "/api/Qa/generate_token",
+            url: "/api/Qa/GenerateToken",
             type: 'get',
             contentType: 'application/json',
             headers: {
@@ -236,20 +262,113 @@
 
         // 处理显示
         if (retObj != null) {
-            if (retObj.status == "00000" || retObj.status == "10000") {
-                // 只返回一个答案
-                $.AddAnswer(retObj.answers[0]);
-            } else if (retObj.status == "00001") {
-                // 返回多个，组合一起
-                $.AddAnswer(retObj.answers.join("<br />"));
-            } else {
+            if (retObj.status.substr(0, 1) != "0") {
                 // 出现失败
                 alert("获取问题答案失败[" + retObj.status + "]: " + retObj.msg);
-            };
+            }
+
+            if (retObj.answer_type == 'text') {
+                // 文本格式的处理
+                if (retObj.status == "00000") {
+                    // 只返回一个答案
+                    $.AddAnswer(retObj.answers[0]);
+                } else {
+                    // 返回多个，组合一起
+                    $.AddAnswer(retObj.answers.join("<br />"));
+                }
+            } else {
+                // json格式的处理
+                if (retObj.answers.data_type == 'knowledge_content') {
+                    // 知识内容处理
+                    $.AddKnowledgeContent(retObj.answers.contents[0], retObj.answers.title);
+
+                    // 处理后续的内容
+                    for (var i = 1; i < retObj.answers.contents.length; i++) {
+                        $.AddKnowledgeContent(retObj.answers.contents[i]);
+                    }
+                } else {
+                    // 不支持的数据类型
+                    alert("不支持的数据类型: " + JSON.stringify(retObj));
+                }
+
+            }
         };
 
         // 隐藏思考中
         $.HideThinkingTips();
+    };
+
+
+    // 上传文件
+    $.UploadPicIndex = 0; // 用来记录上传文件的索引序号，用于找回图片的地址进行替换
+
+    // 获取上传文件的本地路径
+    $.GetUploadFileLocalPath = function(file) {
+        var url = null;
+        if (window.createObjectURL != undefined) { // basic
+            url = window.createObjectURL(file);
+        } else if (window.URL != undefined) { // mozilla(firefox)
+            url = window.URL.createObjectURL(file);
+        } else if (window.webkitURL != undefined) { // webkit or chrome
+            url = window.webkitURL.createObjectURL(file);
+        }
+        return url;
+    };
+
+    $.AjaxUploadFile = function(upload_type, note) {
+        // 获取file标签选择器的文件
+        var files = $('#file').get(0).files;
+
+        // 遍历多个文件上传
+        for (var i = 0; i < files.length; i++) {
+            // 文件信息
+            var file_obj = files[i];
+            $.UploadPicIndex = $.UploadPicIndex + 1;
+            var file_id = "upload_pic_" + $.UploadPicIndex;
+            var file_local_path = $.GetUploadFileLocalPath(file_obj);
+
+            // 将文件对象打包成form表单类型的数据
+            var formdata = new FormData;
+            formdata.append('file', file_obj);
+
+            // 进行文件数据的上传
+            $.ajax({
+                url: '/api/Qa/UploadFile/' + upload_type + '/' + note + '/' + file_id,
+                type: 'post',
+                contentType: false,
+                headers: {
+                    UserId: $.UserId,
+                    Authorization: 'JWT ' + $.Token
+                },
+                data: formdata,
+                processData: false,
+                async: true, // 异步处理
+                success: function(result) {
+                    // 对数据json解析
+                    var retObj = result;
+                    if (retObj.status == "00000") {
+                        // 上传成功
+                        $("#" + retObj.interface_seq_id).attr("src", retObj.url)
+                            // 如果有答案，添加答案
+                        if (retObj.answers.length > 0) {
+                            $.AddAnswer(retObj.answers.join("<br />"));
+                        }
+                    } else {
+                        // 上传失败
+                        $("#" + retObj.interface_seq_id).attr("src", "/static/pic/error.jpg")
+                    }
+                }
+            });
+
+            // 添加上传指示图片显示
+            var pic_html = "<div class=\"ShowPic\">\
+                <img id=\"" + file_id + "\" src=\"/static/pic/uploading.gif\" local_path=\"" + file_local_path + "\">\
+            </div>";
+
+            $.AddQuestion(pic_html)
+
+        }
+
     };
 
 

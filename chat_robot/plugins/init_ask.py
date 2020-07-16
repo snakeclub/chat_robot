@@ -79,6 +79,7 @@ class InitAsk(object):
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
             'to', int - 跳转到指定问题处理，第二个参数为std_question_id
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
+            'break', [collection, partition] - 跳出问题(让问题继续走匹配流程)，可以返回[collection, partition]变更分类和场景
             默认为'again'
         """
         _info_key = kwargs.get('info_key')
@@ -118,6 +119,7 @@ class InitAsk(object):
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
             'to', int - 跳转到指定问题处理，第二个参数为std_question_id
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
+            'break', [collection, partition] - 跳出问题(让问题继续走匹配流程)，可以返回[collection, partition]变更分类和场景
             默认为'again'
         """
         _step = qa.get_cache_value(session_id, 'multiple_save_info', {}).get(context_id, 0)
@@ -169,6 +171,7 @@ class InitAsk(object):
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
             'to', int - 跳转到指定问题处理，第二个参数为std_question_id
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
+            'break', [collection, partition] - 跳出问题(让问题继续走匹配流程)，可以返回[collection, partition]变更分类和场景
             默认为'again'
         """
         _info = kwargs.get('info', {})
@@ -207,6 +210,7 @@ class InitAsk(object):
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
             'to', int - 跳转到指定问题处理，第二个参数为std_question_id
             'again', [str, ...] - 再获取一次答案，第二个参数为提示内容，如果第2个参数为None代表使用原来的参数再提问一次
+            'break', [collection, partition] - 跳出问题(让问题继续走匹配流程)，可以返回[collection, partition]变更分类和场景
             默认为'again'
         """
         _fun_para = kwargs.get('fun', [])

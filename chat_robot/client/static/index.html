@@ -36,6 +36,11 @@
         $.QuestionSearch();
       });
 
+      // 上传文件的事件
+      $("#upload_files").click(function(){
+        $.AjaxUploadFile('product_pic', 'test');
+      });
+
       $('#input_question').keypress(function(event){
           var keynum = (event.keyCode ? event.keyCode : event.which);
           if(keynum == '13'){
@@ -63,6 +68,58 @@
     h5,
     p {
       margin: 0
+    }
+
+    .ShowPic {
+      height:150px;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .ShowPic img {
+      display: inline-block;
+      width:auto;
+      height:100%;
+    }
+
+    .KnowledgeTable {
+      border-size: 0px;
+    }
+
+    .KnowledgeTable p {
+      text-indent:25px;
+    }
+
+    .KnowledgeTitle {
+      font-family:"微软雅黑","黑体","宋体";
+      font-size:18px;
+      height:36px;
+    }
+
+    .KnowledgeImgContainer {
+      margin:0 5px 5px 0;
+      height:150px;
+      text-align: center;
+    }
+
+    .KnowledgeImgContainerLeft{
+      float:left;
+    }
+
+    .KnowledgeImgContainerRight{
+      float:right;
+    }
+
+    .KnowledgeImgContainer img {
+      height:130px;
+      width:auto;
+      display:inline-block;
+    }
+
+    .KnowledgeImgContainer a {
+      font-family:"微软雅黑","黑体","宋体";
+      font-size:12px;
+      height:12px;
     }
   </style>
   <title>Chat Robot Demo</title>
@@ -423,6 +480,9 @@
       </div>
     </div>
   </div>
+  <p>
+  <p>
+  <input type="file" id="file" name="file"  multiple><input type="button" id="upload_files" value="upload">
 </body>
 
 </html>

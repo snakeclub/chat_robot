@@ -582,6 +582,7 @@ class QA(object):
         @param {str} collection=None - 问题分类
 
         @returns {list} - 返回的问题答案字符数组，有可能是多个答案
+            注意：返回的清单如果第1个对象类型是str，则属于文本返回；如果第1个对象的类型是dict(且只允许一个)，则数据json数据返回
         """
         # 检查session是否存在
         if not self.check_session_exists(session_id):
@@ -594,8 +595,8 @@ class QA(object):
         if collection is not None and collection not in self.answer_dao.sorted_collection:
             raise AttributeError('collection [%s] not exists!' % collection)
 
-        # 根据上下文及传参， 设置collections、partition及
-        _collections, _partition, _match_list, _answer, _context_id = self._pre_deal_context(
+        # 根据上下文及传参， 设置collection、partition及
+        _collection, _partition, _match_list, _answer, _context_id = self._pre_deal_context(
             question, session_id, collection
         )
 
@@ -604,8 +605,8 @@ class QA(object):
 
         if _match_list is None and self.use_nlp:
             # 使用NLP语义解析尝试匹配意图
-            _collections, _partition, _match_list, _answer = self._nlp_match_action(
-                question, session_id, _collections, _partition
+            _collection, _partition, _match_list, _answer = self._nlp_match_action(
+                question, session_id, _collection, _partition
             )
 
         if _match_list is None:
@@ -615,10 +616,15 @@ class QA(object):
                 _question_vector = self.qa_manager.normaliz_vec(_vectors.tolist())[0]
 
                 # 进行匹配
-                if _partition is not None:
-                    # 只需查询一个结果
+                if _collection is None and _partition is None:
+                    # 查询多个问题分类的结果清单
+                    _match_list = self._match_stdq_and_answers(
+                        _question_vector, _milvus
+                    )
+                else:
+                    # 只需查询一个问题分类的结果
                     _is_best, _match = self._match_stdq_and_answer_single(
-                        _question_vector, _collections[0], _milvus, partition=_partition
+                        _question_vector, _collection, _milvus, partition=_partition
                     )
                     if _match is None:
                         # 没有匹配到答案
@@ -626,15 +632,10 @@ class QA(object):
                     else:
                         # 只返回第一个匹配上的
                         _match_list = [_match[0], ]
-                else:
-                    # 查询结果清单
-                    _match_list = self._match_stdq_and_answers(
-                        _question_vector, _collections, _milvus
-                    )
 
         # 对返回的标准问题和结果进行处理
         _answer = self._deal_with_match_list(
-            question, session_id, _match_list, _collections, _context_id
+            question, session_id, _match_list, _collection, _context_id
         )
 
         # 返回答案
@@ -688,7 +689,7 @@ class QA(object):
 
         @returns {list} - 处理后的答案
         """
-        if not self.check_session_exists(session_id):
+        if not self.check_session_exists(session_id) or not replace_pre_def or type(answers[0]) != str:
             # 原样返回
             return answers
 
@@ -722,12 +723,20 @@ class QA(object):
 
         # 逐行替换
         _len = len(answers)
-        _index = 0
-        while _index < _len:
-            answers[_index] = re.sub(
-                r'\{\$.+?\$\}', replace_var_fun, answers[_index], re.M
-            )
-            _index += 1
+        if _len > 0:
+            if type(answers[0]) == dict:
+                # 返回的是字典，变更字典值就可以
+                for _key in answers[0].keys():
+                    answers[0][_key] = re.sub(
+                        r'\{\$.+?\$\}', replace_var_fun, answers[0][_key], re.M
+                    )
+            else:
+                _index = 0
+                while _index < _len:
+                    answers[_index] = re.sub(
+                        r'\{\$.+?\$\}', replace_var_fun, answers[_index], re.M
+                    )
+                    _index += 1
 
         # 返回结果
         return answers
@@ -736,14 +745,14 @@ class QA(object):
     # 内部函数
     #############################
     def _deal_with_match_list(self, question: str, session_id: str, match_list: list,
-                              collections: list, context_id: str):
+                              collection: str, context_id: str):
         """
         对标准问题和结果进行处理
 
         @param {str} question - 提出的问题
         @param {str} session_id=None - session id
         @param {list} match_list - 匹配到的问题答案数组[(StdQuestion, Answer), ]
-        @param {list} collections - 问题分类数组
+        @param {str} collection - 问题分类
         @param {str} context_id - 上下文临时id
 
         @returns {list} - 返回答案数组
@@ -757,7 +766,7 @@ class QA(object):
                 question=question
             )
             # 匹配不到问题的时候获取反馈信息
-            _match_list = self._get_no_match_answer(session_id, collections[0])
+            _match_list = self._get_no_match_answer(session_id, collection)
             if type(_match_list) == str:
                 # 直接返回结果字符串
                 return [_match_list]
@@ -765,12 +774,12 @@ class QA(object):
         if len(_match_list) == 1:
             # 只匹配到1个答案
             _answer = self._get_match_one_answer(
-                question, session_id, collections[0], _match_list, context_id
+                question, session_id, collection, _match_list, context_id
             )
         else:
             # 匹配到多个答案
             _answer = self._get_match_multiple_answer(
-                question, session_id, collections[0], match_list
+                question, session_id, collection, match_list
             )
 
         return _answer
@@ -816,7 +825,7 @@ class QA(object):
         @param {str} session_id=None - session id
         @param {str} collection=None - 问题分类
 
-        @returns {list, str, list, list, str} - 返回多元组 collections, partition, match_list, answers, context_id
+        @returns {str, str, list, list, str} - 返回多元组 collection, partition, match_list, answers, context_id
             注：
             1、如果answers不为None，则直接返回该答案
             2、如果match_list不为None，则无需再匹配问题
@@ -825,11 +834,7 @@ class QA(object):
         _match_list = None
         _answers = None
         _context_id = None
-        if collection is None:
-            _collections = self.qa_manager.sorted_collection
-        else:
-            _collections = [collection, ]
-
+        _collection = collection
         _partition = None
 
         # 上下文预处理
@@ -893,6 +898,17 @@ class QA(object):
                     ]
                     # 清除上下文
                     self.clear_session_dict(session_id, 'context')
+                elif _action == 'break':
+                    # 跳出问题重新匹配问题，但可指定collection 和 partition
+                    if _ret is not None:
+                        if _ret[0] is not None:
+                            _collection = _ret[0]
+
+                        if _ret[1] is not None:
+                            _partition = _ret[1]
+
+                    # 清除上下文
+                    self.clear_session_dict(session_id, 'context')
                 else:
                     # 重新提问一次
                     if _ret is None:
@@ -908,18 +924,18 @@ class QA(object):
                         context_id=_context_id
                     )
 
-        return _collections, _partition, _match_list, _answers, _context_id
+        return _collection, _partition, _match_list, _answers, _context_id
 
-    def _nlp_match_action(self, question: str, session_id: str, collections: list, partition: str):
+    def _nlp_match_action(self, question: str, session_id: str, collection: str, partition: str):
         """
         使用NLP分词匹配问题意图
 
         @param {str} question - 提出的问题
         @param {str} session_id - session id
-        @param {list} collections - 问题分类数组
+        @param {str} collection - 问题分类
         @param {str} partition - 问题场景
 
-        @returns {list, str, list, str} - 返回多元组 collections, partition, match_list, answers
+        @returns {str, str, list, str} - 返回多元组 collection, partition, match_list, answers
             注：
             1、如果answers不为None，则直接返回该答案
             2、如果match_list不为None，则无需再匹配问题
@@ -927,16 +943,16 @@ class QA(object):
         _answers = None
         _match_list = None
         _action_list = self.nlp.analyse_purpose(
-            question, collections=collections, partition=partition, is_multiple=False
+            question, collection=collection, partition=partition, is_multiple=False
         )
 
         if len(_action_list) == 0:
             # 没有匹配到任何意图，直接返回
-            return collections, partition, None, None
+            return collection, partition, None, None
 
         # 匹配到意图，获取问题信息
-        _collections = [_action_list[0]['collection']]
-        _partition = [_action_list[0]['partition']]
+        _collection = _action_list[0]['collection']
+        _partition = _action_list[0]['partition']
         if _partition == '':
             _partition = None
         _stdq_id = _action_list[0]['std_question_id']
@@ -962,20 +978,19 @@ class QA(object):
             _answer.type_param = str(_type_param)
 
         # 返回结果
-        return _collections, _partition, _match_list, _answers
+        return _collection, _partition, _match_list, _answers
 
-    def _match_stdq_and_answers(self, question_vector, collections: list, milvus: mv.Milvus) -> list:
+    def _match_stdq_and_answers(self, question_vector, milvus: mv.Milvus) -> list:
         """
         返回多个分类下匹配的问题答案清单
 
         @param {object} question_vector - 问题向量对象
-        @param {list} collections - 问题分类清单(按顺序排序)
         @param {mv.Milvus} milvus - Milvus服务器连接对象
 
         @returns {list} - 返回问题答案清单
         """
         _match_list = list()
-        for _collection in collections:
+        for _collection in self.qa_manager.sorted_collection:
             _is_best, _match = self._match_stdq_and_answer_single(
                 question_vector, _collection, milvus
             )
@@ -1006,8 +1021,12 @@ class QA(object):
         @returns {bool, list} - 返回是否最优匹配标志和问题答案 is_best, [(StdQuestion, Answer), ...], 如果查询不到返回None
             注意：有可能查到有StdQuestion，Answer为None的情况
         """
+        _collection = collection
+        if _collection is None:
+            _collection = self.qa_manager.sorted_collection[0]
+
         _status, _result = milvus.search(
-            collection, top_k=self.multiple_in_collection, query_records=[question_vector, ],
+            _collection, top_k=self.multiple_in_collection, query_records=[question_vector, ],
             partition_tags=partition, params={'nprobe': self.nprobe}
         )
         self.qa_manager.confirm_milvus_status(_status, 'search')
@@ -1189,7 +1208,7 @@ class QA(object):
 
             if len(_type_param) > 5 and _type_param[5] == 'true':
                 # 需要进行预处理
-                _collections, _partition, _match_list, _answers, _context_id = self._pre_deal_context(
+                _collection, _partition, _match_list, _answers, _context_id = self._pre_deal_context(
                     question, session_id, collection)
 
                 if _answers is not None:
@@ -1197,7 +1216,7 @@ class QA(object):
                 else:
                     # 继续处理
                     _answers = self._deal_with_match_list(
-                        question, session_id, _match_list, _collections, _context_id
+                        question, session_id, _match_list, _collection, _context_id
                     )
                     return _answers
             else:

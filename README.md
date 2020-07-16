@@ -5,6 +5,8 @@ chat robot框架可以支持进行job、ask、options等对话插件的开发和
 
 
 
+# 安装手册
+
 ## 安装依赖服务
 
 ### 安装Bert服务
@@ -110,7 +112,9 @@ $ docker ps
 
 
 
-### 使用MySQL5.7作为Milvus数据管理(生产环境建议)
+### 安装MySQL
+
+本项目使用MySql 5.7作为持久化数据库，该数据库既可以作为Milvus的数据库，也可以作为chat_robot应用的数据库使用，当然你也可以使用两个独立的数据库分别部署。
 
 1、通过docker安装数据库
 
@@ -236,7 +240,9 @@ $ docker restart milvus_cpu_0.10.0
 
 
 
-### 安装Redis作为访问数据缓存（如需支持分布式访问则必须）
+### 安装Redis
+
+Redis作为chat_robot的缓存数据库，用于缓存session数据及一些插件的临时数据，这是一个可选项，如果你的应用只需要支持单机部署且不需要使用缓存的插件，可以选择不使用Redis，但如果需要支持分布式部署，则必须安装Redis用于缓存数据的共享。
 
 1、获取Redis的Docker镜像
 
@@ -315,7 +321,9 @@ OK
 
 
 
-## 安装chat robot
+## 安装chat_robot
+
+### 安装及启动应用
 
 注意：chat robot需要使用mysql作为数据库服务器，请在启动前安装好MySQL并建好对应的数据库（可以与Milvus共用数据库实例，通过不同数据库区分即可）
 
@@ -329,15 +337,7 @@ $ pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requriment.txt
 
 3、按实际环境情况，修改 chat_robot/chat_robot/conf/server.xml的配置信息
 
-4、使用chat_robot/chat_robot/import.py导入问答库信息，问答库的导入模板可参考chat_robot/test/questions.xlsx
-
-```
-$ python import.py import=../test/questions.xlsx truncate=true
-```
-
-注：truncate标志指定清空此前的问答库。
-
-5、使用chat_robot/chat_robot/server.py启动问答服务
+4、使用chat_robot/chat_robot/server.py启动问答服务
 
 ```
 $ python server.py
@@ -346,12 +346,234 @@ $ python server.py
 程序将自动找到当前目录下的./conf/server.xml配置文件，如果需要指定其他配置文件，可以在命令中指定配置文件：
 
 ```
-$ python server.py config="d:/tes/server.xml"
+$ python server.py config="d:/test/server.xml"
 ```
 
 
 
+### 管理问答库数据
+
+默认安装的chat_robot是无法直接处理提问，需要维护问答库数据才能支持问答处理，可以通过 “chat_robot/chat_robot/import.py” 脚本进行问答库的维护。
+
+**1、导入问答库信息**
+
+问答库的导入模板可参考 “chat_robot/test/questions.xlsx” 文件，导入数据的脚本如下：
+
+```
+$ python import.py import=../test/questions.xlsx truncate=true
+```
+
+注：truncate标志指定清空此前的问答库，如果是增量导入可去掉truncate标志；如果导入的模板中包含NlpSureJudgeDict，NlpPurposConfigDict，则需要重启应用进行加载。
+
+**2、重置数据库（清空所有数据）**
+
+可执行以下命令清空所有数据：
+
+```
+$ python import.py del_db=true
+```
+
+**3、清空Milvus向量信息**
+
+清除特定的问题分类（collection），多个分类使用 “,” 分隔：
+
+```
+$ python import.py del_milvus=test_chat,test_finance
+```
+
+清除所有的问题分类（collection），del_milvus传空值：
+
+```
+$ python import.py del_milvus= truncate=true
+```
+
+**4、指定特定的配置文件获取库信息**
+
+```
+$ python import.py config="d:/test/server.xml" import=../test/questions.xlsx truncate=true
+```
 
 
 
+### 启动测试客户端
+
+可以通过指定 server.xml 配置中的 enable_client 参数，在启动服务时将同步启动测试客户端的页面服务。
+
+启动后可以通过以下地址打开客户端对话页面：http://127.0.0.1:8001/ 
+
+利用该对话页面可以验证对话的结果。
+
+注意：生产部署请勿打开该参数，且注意要删除数据库表 restful_api_user 的测试用户信息。
+
+
+
+### 使用Restful Api服务
+
+chat_robot目前仅关注于问答后台服务的实现，并通过Restful Api提供调用的支持，需应用自行实现对话客户端的交互处理，支持的Api服务及传参可直接查看源码文件 “chat_robot/lib/restful_api.py”，主要Api如下：
+
+**TokenServer（服务端为客户端生成可用Token）**
+
+- Api Url：/api/TokenServer/GenerateUserToken
+- 用途: 后台服务端为客户端生成可用的令牌用于访问
+
+**GenerateToken（创建Token）**
+
+- Api Url: /api/Qa/GenerateToken
+- 用途: 生成可用的安全令牌，客户端可定时重新生成一次新的令牌用于访问
+
+**GetSessionId（获取对话Session ID）**
+
+- Api Url: /api/Qa/GetSessionId
+- 用途: 获取本次对话的Session ID，该ID必须每次对话都传入，用于处理上下文内容的传递
+
+**SearchAnswer（获取问题答案）**
+
+- Api Url: /api/Qa/SearchAnswer
+- 用途: 输入问题并获取对应的问题答案，可用通过指定特定问题分类，将问题限定在一个范围内匹配答案
+
+**UploadFile（上传文件-单文件）**
+
+- Api Url: /api/Qa/UploadFiles/<upload_type>/<note>/<interface_seq_id>
+- 用途: 客户端上传文件，进行文件上传后处理并返回处理结果
+
+
+
+# 通讯安全机制
+
+**不支持HTTPS**
+
+chat_robot采用的是http协议进行交互，暂未支持https，如需使用https可使用Nginx等Web代理实现SSL校验和解SSL。
+
+**Token（令牌）的使用**
+
+在访问限制方面，chat_robot使用token（令牌）技术进行接口访问权限的限制，token校验的开关及相关参数可在  server.xml 配置中的 security 参数进行设置。
+
+Restful Api 的客户端代码可参考 chat_robot/client/static/index.html 及 chat_robot/client/static/js/functions.js 
+
+**特别注意需要在客户端Http请求的报文头（headers）上增加 UserId 和 Authorization 参数 :**
+
+```
+headers: {
+    UserId: $.UserId,
+    Authorization: 'JWT ' + $.Token
+}
+```
+
+其中 UserId 为  restful_api_user 表上配置的用户id，Authorization 放置的是与 UserId 对应的令牌字符串（注意令牌前面要加上 “JWT ”），该令牌应该由用户的登陆操作从后台服务产生并发给客户端。
+
+**改变Token校验规则**
+
+如果想自定义Token校验的规则，可用直接修改 “chat_robot/lib/restful_api.py” 中的 “verify_token” 函数。
+
+
+
+**生产模式的令牌安全方案**
+
+在生产环境，由对应系统的后台应用直接调用 /api/TokenServer/GenerateUserToken 服务为客户生成临时访问token（传入的user_id是用户登陆后的id，或者一个不会重复的随机id），处理流程如下：
+
+客户打开聊天界面 -> 应用后台调用TokenServer为客户生成令牌 -> 应用后台返回给客户user_id和可用令牌值 -> 聊天客户端使用user_id和令牌调用chat_robot服务 -> 聊天客户端定时生成新的可用令牌
+
+打开TokenServer和变更验证方式，可修改 server.xml 配置中的 security 参数。
+
+
+
+# 对话场景支持
+
+chat_robot框架目前支持text、job、ask、options等4种对话场景的处理支持，配置在答案表（a_type字段）分别说明如下：
+
+## text（文字回答）
+
+最简单的问答模式，没有上下文关系，处理流程如下：
+
+收到问题 -> 匹配标准问题 -> 找到问题答案 -> 直接回复答案文本（answer字段）
+
+## options（对话选项）
+
+选项模式的对话，对话过程中需要通过上下文判断，例如客户提问后给客户多个选项，在客户选择具体选项后，返回的是该选项的答案。
+
+一共有两种情况会产生对话选项：
+
+**问题答案设置为选项**
+
+- 设置方法：标准问题答案的a_type字段设置为options，type_param字段设置为选项列表，格式为 “**[ [选项对应标准问题id, '选项提示信息'], ... ]**” ，例如"[ [23, '存款'], [24, '贷款'], [25, '其他'] ]", answer字段设置为选项前的提示内容
+- 处理流程：收到问题 -> 匹配到选项问题 -> 将提示和选项组合为答案文本回复 -> 客户回答选项序号 -> 根据上下文找到选项序号对应的选项标准问题ID，执行该标准问题的回答处理
+- 跳出条件：如果客户回复的选项序号（数字）不在选项范围，将提示客户重新选择；如果客户回复的是非序号，则认为客户提出了新问题，直接跳出选项并按新问题匹配处理
+
+**提问语句匹配到多个标准问题**
+
+- 产生情况：如果提问语句与所有标准问题的向量距离均未能超过match_distance设置的值，但有多个问题的向量距离在multiple_distance和match_distance之间，则框架会自动组合这些问题为选项提示客户选择他实际想问的问题
+- 处理流程： 收到问题 -> 匹配到多个标准问题 -> 将问题清单组合为选项答案文本回复 ->  客户回答选项序号 -> 根据上下文找到选项序号对应的选项标准问题ID，执行该标准问题的回答处理
+- 跳出条件：与上一种情况一样
+
+注意：客户选择选项后找到标准问题答案，是**执行回答处理**，而**不是返回答案文本**。如果对应的标准问题答案类型是options，则可以产生多级选项的问答效果；如果答案类型是ask或job，则能执行其他方式的对话场景。
+
+## job（执行任务）
+
+job模式的答案将会通过对话插件模式执行自定义的插件函数，例如查找一个随机标准问题答案进行回答。
+
+- 设置方法：标准问题答案的a_type字段设置为job，type_param字段设置为插件参数，格式为 “**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**”，例如：“['InitJob', 'get_random_answer', {'ids': [{1, 2, 3]}]” 会调用job类型插件中的InitJob.get_random_answer(..., **{'ids': [{1, 2, 3]}) ，从1，2，3这3个标准问题中随机找一个进行回答处理
+- 处理流程：收到问题 -> 匹配到任务问题 -> 从插件列表中找到所配置的插件函数执行 -> 根据插件执行结果处理（直接回复问题答案文本，或跳转到另外一个标准问题进行回答处理）
+
+## ask（提问模式）
+
+提问模式是由系统向客户提出问题，并根据客户的回答进行进一步的处理，例如询问客户地址等。
+
+- 设置方法：标准问题答案的a_type字段设置为ask，type_param字段设置为插件参数，格式为 **“['插件类名', '插件函数名', '问题分类', '问题场景', {插件的调用扩展入参字典}, '第一次是否直接执行']**”， 例如："['TestAskPlugins', 'test_pay_fun', 'test_finance', '', {}, 'true', ]"  将调用“ask” 类型插件的TestAskPlugins.test_pay_fun
+- 处理流程：收到问题 -> 匹配到提问模式问题 -> 将问题信息添加到上下文 -> 向客户提问 -> 客户回答问题 -> 根据上下文执行问题对应的插件函数 -> 根据插件执行结果处理（直接回复问题答案文本-跳出提问，或跳转到另外一个标准问题进行回答处理，或者重新发起提问）
+
+注意：
+
+- 如果指定了第一次直接执行（设置为'true'），则再第一次匹配到问题后直接先执行插件函数，再根据插件函数的返回值回答客户；
+- 连续的多次提问有相同的上下文id进行数据关联，但一旦跳出了提问则上下文将被清除。
+
+
+
+# NLP对话意图识别
+
+可以通过设置  server.xml 配置中的 use_nlp 参数打开NPL对话意图识别的功能，该功能会根据客户提问语句的关键词匹配客户的实际意图，进而执行该意图对应的标准问题答案，例如客户提问 “我要给XX转账100元” ，可以通过关键词 “转账” 匹配到 **转账** 意图，从而执行转账的答案处理。（目前只支持关键词匹配，未来计划增加正则表达式规则，支持更多形式的匹配规则）
+
+- 设置方法：设置意图配置字典（NlpPurposConfigDict）的信息，主要包括：
+  
+  - order_num 定义了意图搜索优先级，数字越大优先级越高，如果匹配到多个意图，将只返回优先级最高的意图
+  
+  - std_question_id 为匹配意图后执行的标准问题ID；
+  
+  - collection，partition 指定意图对应的问题分类和场景
+
+  - match_collection，match_partition 指定要在哪个问题分类和场景下匹配意图，可用这两个值对意图进行分类
+  
+  - exact_match_words 为精确匹配意图的关键字清单，将会按整个问题进行匹配，格式为 “**['关键词', '关键词', ... ]**” ，例如设置 “ ['下一个', '继续', 'more'] ” 来匹配 **下一步操作** 意图
+  
+  - exact_ignorecase 可以设置精确匹配意图关键字是否忽略大小写，默认为 'N'
+  
+  - match_words 为分词匹配关键词清单，按照问题语句分词后匹配是否在意图词组中，格式为 “**['关键词', '关键词', ... ]**” ，例如设置 “ ['转账', '转钱', '打钱'] ” 来匹配 **转账** 意图
+  
+  - ignorecase 可以设置分词匹配是否忽略大小写，默认为 'N'
+  
+  - word_scale 可以设置分词匹配词比例控制，例如可以设置 word_scale 为 0.5，则问题语句 “你好啊” 中匹配上的 “你好” 占整个问题比例超过 0.5 , 视为匹配上；而 “朋友你好啊” 中匹配上的 “你好” 占整个问题比例低于 0.5 ， 视为未匹配上
+  
+  - check 设置为检查意图插件的参数配置，格式为 "**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**"，例如 "['InitCheck', 'check_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]" 将调用 “nlpcheck” 类型插件InitCheck.check_by_nest(... , **{扩展入参}) ， 并根据函数返回的True和Fasle确认是否真正匹配了意图
+  
+  - info 设置为获取意图辅助信息，如果意图对应的问答模式是job或ask，获取到的辅助信息将会传入对应标准问题所调用插件的扩展入参字典；配置格式为 “**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**”，例如 “['InitInfo', 'get_by_words', {'condition': [{'key': 'amount', 'class': ['m']}, {'key': 'in_name', 'class': ['nr']}]}]” 将调用 “nlpinfo” 类型插件的InitInfo.get_by_words获取问题中的信息，以字典方式返回，返回的字典将送入标准问题对应的插件调用的扩展入参中
+  
+    
+  
+- 处理流程：收到问题 -> 进行NLP意图匹配 -> (如果匹配上)执行意图对应问题的回答处理（可能是text、options、job、ask）的任意一种
+
+
+
+# 预定义替换符
+
+回复出去的答案可以通过预定义替换符替换中间的内容，让答案文本在反馈的时候根据上下文进行调整，需要支持预定义替换符，需要将答案信息（Answers）的 replace_pre_def 字段设置为Y，并在答案的文本内容中使用 {$xx=xx$} 格式进行定义，目前支持的替换符包括：
+
+- {$info=key$} ：从session中获取info字典的key对象值进行替换
+- {$cache=key$} : 从session的cache缓存（与上下文相关）字典的key对象值进行替换
+- {$config=key$} : 从 server.xml 的 qa_config 字典的key对象值进行替换
+- {$para=key$} : 从 CommonPara 表获取制定para的值进行替换
+
+
+
+# 对话插件扩展
+
+待补充
 

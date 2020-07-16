@@ -16,6 +16,7 @@ import os
 import sys
 import inspect
 import datetime
+import math
 import redis
 from flask_cors import CORS
 from flask import Flask, request, send_file, jsonify
@@ -29,7 +30,7 @@ from HiveNetLib.base_tools.import_tool import ImportTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.restful_api import FlaskTool, Qa, QaDataManager, Client
+from chat_robot.lib.restful_api import FlaskTool, Qa, QaDataManager, Client, TokenServer
 from chat_robot.lib.answer_db import RestfulApiUser
 from chat_robot.lib.data_manager import QAManager
 from chat_robot.lib.qa import QA
@@ -79,6 +80,10 @@ class QAServerLoader(object):
         self.app.debug = self.debug
         self.app.send_file_max_age_default = datetime.timedelta(seconds=1)  # 设置文件缓存1秒
         self.app.config['JSON_AS_ASCII'] = False  # 显示中文
+        # 上传文件大小限制
+        self.app.config['MAX_CONTENT_LENGTH'] = math.floor(
+            self.server_config['max_upload_size'] * 1024 * 1024
+        )
 
         # 插件字典，先定义清单，启动前完成加载
         self.extend_plugin_path = self.server_config.get('extend_plugin_path', '')
@@ -127,9 +132,17 @@ class QAServerLoader(object):
             salt=bytes(_security['salt'], encoding='utf-8'),
             algorithm_name=_security['algorithm_name']
         )
+        # 验证ip白名单处理
+        _security['token_server_auth_ip_list'] = _security['token_server_auth_ip_list'].split(',')
 
         # 动态加载路由
         self.api_class = [Qa, QaDataManager]
+
+        # 增加令牌服务的路由
+        if _security['enable_token_server']:
+            self.api_class.append(TokenServer)
+
+        # 增加客户端路由
         if self.server_config['enable_client']:
             # 客户端路由api服务
             self.api_class.append(Client)
@@ -190,12 +203,13 @@ class QAServerLoader(object):
         )
         return _user.id
 
-    def login(self, username: str, password: str) -> dict:
+    def login(self, username: str, password: str, is_generate_token: bool = True) -> dict:
         """
         用户登陆
 
         @param {str} username - 登陆用户名
         @param {str} password - 登陆密码
+        @param {bool} is_generate_token=True - 是否产生令牌
 
         @returns {dict} - 返回用户信息
             status - 状态， 00000-成功， 10001-用户名不存在，10002-用户名密码错误
@@ -213,7 +227,8 @@ class QAServerLoader(object):
         else:
             if check_password_hash(_user.password_hash, password):
                 _back['user_id'] = _user.id
-                _back['token'] = self.generate_token(_user.id)
+                if is_generate_token:
+                    _back['token'] = self.generate_token(_user.id)
             else:
                 _back['status'] = '10002'
 
