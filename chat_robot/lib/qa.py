@@ -31,7 +31,7 @@ from HiveNetLib.base_tools.import_tool import ImportTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.data_manager import QAManager, Answer, StdQuestion, ExtQuestion, NoMatchAnswers
+from chat_robot.lib.data_manager import QAManager, Answer, StdQuestion, ExtQuestion, NoMatchAnswers, SendMessageQueue, SendMessageHis
 from chat_robot.lib.nlp import NLP
 
 
@@ -74,6 +74,7 @@ class QA(object):
         self.select_options_out_index = qa_config.get(
             'select_options_out_index', u'请输入正确的问题序号(范围为: 1 - {$len$})，例如输入"1"'
         )
+        self.query_send_message_num = qa_config.get('query_send_message_num', 2)
 
         # 插件plugins函数字典，格式为{'type':{'class_name': {'fun_name': fun, }, },}
         self.plugins = plugins
@@ -206,7 +207,7 @@ class QA(object):
             with redis.Redis(connection_pool=self.redis_pool) as _redis:
                 self._add_redis_dict(
                     'chat_robot:session:%s:info' % session_id,
-                    info, _redis
+                    copy.deepcopy(info), _redis
                 )
         else:
             self.sessions[session_id]['info'].update(info)
@@ -318,16 +319,18 @@ class QA(object):
         else:
             self.sessions[session_id][type_key].clear()
 
-    def add_options_context(self, session_id: str, options: list):
+    def add_options_context(self, session_id: str, options: dict):
         """
         增加选项上下文信息
 
         @param {str} session_id - 客户的session id
-        @param {list} options - 选项列表，格式为:
-            [
-                [std_question_id, option_str],
-                ...
-            ]
+        @param {dict} options - 选项信息字典，字典定义如下：
+            data_type = 'options' - 数据类型
+            tips {str} - 开始提示信息
+            options {list} - 选项清单，每个选项为一个字典
+                option_str {str} - 选项显示文本
+                std_question_id {int} - 选项对应标准问题id
+                index {int} - 选项对应顺序号
         """
         if self.use_redis:
             with redis.Redis(connection_pool=self.redis_pool) as _redis:
@@ -508,7 +511,7 @@ class QA(object):
             with redis.Redis(connection_pool=self.redis_pool) as _redis:
                 if context_id is None:
                     self._add_redis_dict(
-                        'chat_robot:session:%s:cache' % session_id, info, _redis
+                        'chat_robot:session:%s:cache' % session_id, copy.deepcopy(info), _redis
                     )
                 else:
                     if not _redis.hexists(
@@ -520,7 +523,7 @@ class QA(object):
 
                     self._add_redis_dict(
                         'chat_robot:session:%s:context_cache' % session_id,
-                        {context_id: info}, _redis
+                        {context_id: copy.deepcopy(info)}, _redis
                     )
         else:
             if context_id is None:
@@ -572,14 +575,16 @@ class QA(object):
     #############################
     # 公共问答处理
     #############################
-
-    def quession_search(self, question: str, session_id: str = None, collection: str = None) -> list:
+    def quession_search(self, question: str, session_id: str = None, collection: str = None,
+                        std_question_id: int = None, std_question_tag: str = None) -> list:
         """
         搜寻问题答案并返回
 
         @param {str} question - 提出的问题
         @param {str} session_id=None - session id
         @param {str} collection=None - 问题分类
+        @param {int} std_question_id=None - 指定匹配的标准问题id（如指定后不再进行匹配处理）
+        @param {str} std_question_tag=None - 指定匹配的标准问题tag（如指定后不再进行匹配处理）
 
         @returns {list} - 返回的问题答案字符数组，有可能是多个答案
             注意：返回的清单如果第1个对象类型是str，则属于文本返回；如果第1个对象的类型是dict(且只允许一个)，则数据json数据返回
@@ -591,13 +596,9 @@ class QA(object):
         # 更新上次访问时间
         self.update_last_time(session_id)
 
-        # 检查collection
-        if collection is not None and collection not in self.answer_dao.sorted_collection:
-            raise AttributeError('collection [%s] not exists!' % collection)
-
         # 根据上下文及传参， 设置collection、partition及
         _collection, _partition, _match_list, _answer, _context_id = self._pre_deal_context(
-            question, session_id, collection
+            question, session_id, collection, std_question_id, std_question_tag
         )
 
         if _answer is not None:
@@ -640,6 +641,87 @@ class QA(object):
 
         # 返回答案
         return _answer
+
+    #############################
+    # 主动推送给客户端的消息处理
+    #############################
+    def add_send_message(self, user_id: int, msg, from_user_id: int = 0, from_user_name: str = '系统'):
+        """
+        向队列中添加待发送消息
+
+        @param {int} user_id - 用户id
+        @param {list|dict} msg - 要发送的消息内容
+            [str, str, ...] - text类型消息，要发送的消息数组
+            dict - json类型消息，要发送的json字典
+        @param {int} from_user_id=0 - 来源用户id
+        @param {int} from_user_name='系统' - 来源用户名
+        """
+        SendMessageQueue.create(
+            from_user_id=from_user_id, from_user_name=from_user_name,
+            user_id=user_id, msg_type='text' if type(msg) == list else 'json',
+            msg=str(msg)
+        )
+
+    def query_send_message_count(self, user_id: int) -> int:
+        """
+        获取待发送消息数量
+
+        @param {int} user_id - 用户id
+
+        @returns {int} - 待发送消息数量
+        """
+        return SendMessageQueue.select().where(SendMessageQueue.user_id == user_id).count()
+
+    def query_send_message(self, user_id: int) -> list:
+        """
+        获取待发送消息清单
+
+        @param {int} user_id - 用户id
+
+        @returns {list} - 获取到的消息清单队列
+            [
+                {
+                    'from_user_id': x, 'from_user_name': '',
+                    'msg_type': '', 'msg': object, 'create_time': ''
+                }
+            ]
+        """
+        _query = (SendMessageQueue.select().where(SendMessageQueue.user_id == user_id)
+                  .order_by(SendMessageQueue.create_time.asc())
+                  .limit(self.query_send_message_num))
+        _msg_list = list()
+        for _row in _query:
+            _msg_list.append(
+                {
+                    'id': _row.id,
+                    'from_user_id': _row.from_user_id,
+                    'from_user_name': _row.from_user_name,
+                    'msg_type': _row.msg_type,
+                    'msg': eval(_row.msg),
+                    'create_time': _row.create_time.strftime('%Y-%m-%d %H:%M:%S')
+                }
+            )
+
+        # 返回结果
+        return _msg_list
+
+    def confirm_send_message(self, message_id: int):
+        """
+        确认已发送的消息id
+
+        @param {int} message_id - 消息id
+        """
+        # 将数据迁移至历史表
+        _message = SendMessageQueue.get_or_none(SendMessageQueue.id == message_id)
+        if _message is not None:
+            SendMessageHis.create(
+                id=_message.id, from_user_id=_message.from_user_id,
+                from_user_name=_message.from_user_name, user_id=_message.user_id,
+                msg_type=_message.msg_type, msg=_message.msg,
+                create_time=_message.create_time
+            )
+
+            SendMessageQueue.delete().where(SendMessageQueue.id == message_id).execute()
 
     #############################
     # 工具函数
@@ -817,13 +899,16 @@ class QA(object):
             # 等待
             time.sleep(self.session_checktime)
 
-    def _pre_deal_context(self, question: str, session_id: str, collection: str):
+    def _pre_deal_context(self, question: str, session_id: str, collection: str, std_question_id: int,
+                          std_question_tag: str):
         """
         上下文预处理
 
         @param {str} question - 提出的问题
-        @param {str} session_id=None - session id
-        @param {str} collection=None - 问题分类
+        @param {str} session_id - session id
+        @param {str} collection - 问题分类
+        @param {int} std_question_id - 指定的标准问题id
+        @param {str} std_question_tag - 指定的标准问题tag
 
         @returns {str, str, list, list, str} - 返回多元组 collection, partition, match_list, answers, context_id
             注：
@@ -837,27 +922,50 @@ class QA(object):
         _collection = collection
         _partition = None
 
-        # 上下文预处理
+        # 特定处理的上下文id
         if session_id is not None:
             _context_dict = self.get_context_dict(session_id)
+            if 'ask' in _context_dict.keys():
+                _context_id = _context_dict['ask']['context_id']
+
+        # 如果指定了标准问题，无需匹配，直接使用
+        if std_question_id is not None:
+            _match_list = [
+                (StdQuestion.get(StdQuestion.id == std_question_id),
+                 Answer.get(Answer.std_question_id == std_question_id))
+            ]
+            return _collection, _partition, _match_list, _answers, _context_id
+
+        # 如果指定了标准问题tag
+        if std_question_tag is not None:
+            _std_q = StdQuestion.get(
+                (StdQuestion.tag == std_question_tag) & (StdQuestion.collection == _collection)
+            )
+            _match_list = [
+                (_std_q, Answer.get(Answer.std_question_id == _std_q.id))
+            ]
+            return _collection, _partition, _match_list, _answers, _context_id
+
+        # 上下文预处理
+        if session_id is not None:
             if 'options' in _context_dict.keys():
                 # 选项处理
                 if question.isdigit():
                     # 回答的内容是数字选项
                     _index = int(question)
-                    _len = len(_context_dict['options'])
+                    _len = len(_context_dict['options']['options'])
                     if _index < 1 or _len < _index:
-                        # 超过了选项值范围，重新提示
-                        _answers = self.answer_replace_pre_def(
+                        # 超过了选项值范围，重新提示, 修改提示内容即可
+                        _answers = _context_dict['options']
+                        _answers['tips'] = self.answer_replace_pre_def(
                             session_id, [self.select_options_out_index.replace(
                                 '{$len$}', str(_len))],
                             replace_pre_def=True
-                        )
+                        )[0]
 
-                        for _option in _context_dict['options']:
-                            _answers.append(_option[1])
+                        _answers = [_answers, ]
                     else:
-                        _stdq_id = _context_dict['options'][_index - 1][0]
+                        _stdq_id = _context_dict['options']['options'][_index - 1].std_question_id
                         _match_list = [
                             (StdQuestion.get(StdQuestion.id == _stdq_id),
                              Answer.get(Answer.std_question_id == _stdq_id))
@@ -966,7 +1074,9 @@ class QA(object):
         if _answer.a_type in ('job', 'ask'):
             _matched_info = {
                 'action': _action_list[0]['action'],
-                'is_sure': _action_list[0]['is_sure']
+                'is_sure': _action_list[0]['is_sure'],
+                'match_word': _action_list[0]['match_word'],
+                'match_type': _action_list[0]['match_type'],
             }
             _matched_info.update(_action_list[0]['info'])
             _type_param = eval(_answer.type_param)
@@ -1140,24 +1250,42 @@ class QA(object):
             return self.answer_replace_pre_def(
                 session_id, [_answer.answer], _answer.replace_pre_def == 'Y', context_id=context_id
             )
+        elif _answer.a_type == 'json':
+            # json格式
+            _json_dict = eval(self.answer_replace_pre_def(
+                session_id, [_answer.answer], _answer.replace_pre_def == 'Y', context_id=context_id
+            )[0])
+            return [_json_dict]
         elif _answer.a_type == 'options':
             # 选项类答案处理，提示信息放在answer字段上, type_param的格式为：[[std_question_id, 'option_str'], ...]
             if not self.check_session_exists(session_id):
                 raise FileNotFoundError('not support options if session id is None!')
 
             _options = eval(_answer.type_param)
-            _back_answers = [_answer.answer]
+            _back_answers = {
+                'data_type': 'options',
+                'tips': self.answer_replace_pre_def(
+                    session_id, [_answer.answer, ], _answer.replace_pre_def == 'Y', context_id=context_id
+                )[0],
+                'options': list(),
+            }
+
             _index = 1
             for _option in _options:
-                _back_answers.append("%d. %s" % (_index, _option[1]))
+                _back_answers['options'].append({
+                    'option_str': "%d. %s" % (_index, self.answer_replace_pre_def(
+                        session_id, [_option[1], ], _answer.replace_pre_def == 'Y', context_id=context_id
+                    )[0]),
+                    'std_question_id': _option[0],
+                    'index': _index
+                })
+
                 _index += 1
 
             # 添加到上下文
-            self.add_options_context(session_id, _options)
+            self.add_options_context(session_id, _back_answers)
 
-            return self.answer_replace_pre_def(
-                session_id, _back_answers, _answer.replace_pre_def == 'Y', context_id=context_id
-            )
+            return [_back_answers, ]
         elif _answer.a_type == 'job':
             # 操作类答案处理，如果处理完成为None，则用answer字段进行提示，type_param的格式为[class_name, fun_name, {para_dict}]
             _type_param = eval(_answer.type_param)
@@ -1188,28 +1316,12 @@ class QA(object):
                     session_id, _back_answers, _answer.replace_pre_def == 'Y', context_id=context_id
                 )
         elif _answer.a_type == 'ask':
-            # 提问类答案处理, 使用answer字段进行提问，type_param的格式为[class_name, fun_name, collection, partition, {para_dict}, 'true']
-            _type_param = eval(_answer.type_param)
-
-            _ask_info = {
-                'deal_class': _type_param[0],
-                'deal_fun': _type_param[1],
-                'std_question_id': _stdq.id,
-                'collection': _type_param[2],
-                'partition': _type_param[3],
-                'param': _type_param[4],
-                'replace_pre_def': _answer.replace_pre_def == 'Y'
-            }
-            if context_id is not None:
-                _ask_info['context_id'] = context_id
-
-            # 添加上下文
-            self.add_ask_context(session_id, _ask_info)
-
-            if len(_type_param) > 5 and _type_param[5] == 'true':
-                # 需要进行预处理
+            # 提问类答案处理, 使用answer字段进行提问，type_param的格式为[class_name, fun_name, collection, partition, {para_dict}, True]
+            _context_dict = self.get_context_dict(session_id)
+            if 'ask' in _context_dict.keys() and _context_dict['ask']['std_question_id'] == _stdq.id:
+                # 是自身并且问题ID一致，是延续性的处理
                 _collection, _partition, _match_list, _answers, _context_id = self._pre_deal_context(
-                    question, session_id, collection)
+                    question, session_id, collection, None, None)
 
                 if _answers is not None:
                     return _answers
@@ -1220,10 +1332,42 @@ class QA(object):
                     )
                     return _answers
             else:
-                # 提示结果
-                return self.answer_replace_pre_def(
-                    session_id, [_answer.answer], _answer.replace_pre_def == 'Y', context_id=context_id
-                )
+                # 新的问题处理
+                _type_param = eval(_answer.type_param)
+
+                _ask_info = {
+                    'deal_class': _type_param[0],
+                    'deal_fun': _type_param[1],
+                    'std_question_id': _stdq.id,
+                    'collection': _type_param[2],
+                    'partition': _type_param[3],
+                    'param': _type_param[4],
+                    'replace_pre_def': _answer.replace_pre_def == 'Y'
+                }
+                if context_id is not None:
+                    _ask_info['context_id'] = context_id
+
+                # 添加上下文
+                self.add_ask_context(session_id, _ask_info)
+
+                if len(_type_param) > 5 and _type_param[5]:
+                    # 需要进行预处理
+                    _collection, _partition, _match_list, _answers, _context_id = self._pre_deal_context(
+                        question, session_id, collection, None, None)
+
+                    if _answers is not None:
+                        return _answers
+                    else:
+                        # 继续处理
+                        _answers = self._deal_with_match_list(
+                            question, session_id, _match_list, _collection, _context_id
+                        )
+                        return _answers
+                else:
+                    # 提示结果
+                    return self.answer_replace_pre_def(
+                        session_id, [_answer.answer], _answer.replace_pre_def == 'Y', context_id=context_id
+                    )
         else:
             # 不支持的处理模式
             self._log_debug('not support answer type [%s]!' % _answer.a_type)
@@ -1247,36 +1391,44 @@ class QA(object):
         @param {str} collection - 问题分类
         @param {list} match_list - 匹配到的问题/答案列表
 
-        @returns {list} - 返回的提示问题清单
+        @returns {list} - 返回的提示问题结构数组: [dict, ], 字典定义如下：
+            data_type = 'options' - 数据类型
+            tips {str} - 开始提示信息
+            options {list} - 选项清单，每个选项为一个字典
+                option_str {str} - 选项显示文本
+                std_question_id {int} - 选项对应标准问题id, 如果选项不是对应问题时送 -1
+                index {int} - 选项对应顺序号
         """
-        _answers = list()
+        _answers = {
+            'data_type': 'options',
+            'options': list(),
+        }
+        _with_context = True  # 是否有上下文
         if not self.check_session_exists(session_id):
             # 无法使用session，改为提示问题的形式
-            _answers.append(self.select_options_tip_no_session)
-            _options = None
+            _answers['tips'] = self.select_options_tip_no_session
+            _with_context = False
         else:
             # 准备选项上下文
-            _answers.append(self.select_options_tip)
-            _options = list()
+            _answers['tips'] = self.select_options_tip
 
         # 组织选项
         _index = 1
         for _match in match_list:
-            _option_str = '%d. %s' % (_index, _match[0].question)
-            _answers.append(_option_str)
-            if _options is not None:
-                _options.append(
-                    [_match[0].id, _option_str]
-                )
+            _answers['options'].append({
+                'option_str': '%d. %s' % (_index, _match[0].question),
+                'std_question_id': _match[0].id,
+                'index': _index
+            })
 
             _index += 1
 
         # 添加上下文
-        if _options is not None:
-            self.add_options_context(session_id, _options)
+        if _with_context:
+            self.add_options_context(session_id, _answers)
 
         # 返回结果
-        return _answers
+        return [_answers, ]
 
     #############################
     # Session相关的处理函数
@@ -1330,7 +1482,7 @@ class QA(object):
         """
         if type(value) == dict:
             _name = '%s:%s' % (name, key)  # 下级对象的name是原来的基础上增加
-            _mapping = value  # 缓存对象
+            _mapping = copy.deepcopy(value)  # 缓存对象
             _value = '%s:%s' % ('dict', _name)  # 指定当前对象类型为dict
 
             # 添加下级字典

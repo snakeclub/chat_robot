@@ -416,6 +416,11 @@ chat_robot目前仅关注于问答后台服务的实现，并通过Restful Api�
 - Api Url：/api/TokenServer/GenerateUserToken
 - 用途: 后台服务端为客户端生成可用的令牌用于访问
 
+**AddSendMessage（服务端为向客户发送消息）**
+
+- Api Url：/api/TokenServer/AddSendMessage
+- 用途: 后台服务端为向指定客户发送消息，比如系统提示、投诉回复，或者客户之间的消息交互
+
 **GenerateToken（创建Token）**
 
 - Api Url: /api/Qa/GenerateToken
@@ -435,6 +440,21 @@ chat_robot目前仅关注于问答后台服务的实现，并通过Restful Api�
 
 - Api Url: /api/Qa/UploadFiles/<upload_type>/<note>/<interface_seq_id>
 - 用途: 客户端上传文件，进行文件上传后处理并返回处理结果
+
+**GetMessageCount（获取当前客户的待收消息数量-平台推送）**
+
+- Api Url: /api/Qa/GetMessageCount
+- 用途: 获取当前客户端的待收消息数量，该消息可由平台或其他用户发出，在平台上进行缓存供客户端登陆后获取
+
+**GetMessageList（获取当前客户的待收消息内容清单）**
+
+- Api Url: /api/Qa/GetMessageList
+- 用途: 获取当前客户端的待收消息内容清单，每次可获取的消息数量由服务器端控制，可通过 server.xml 配置中的 query_send_message_num 参数控制；需注意该API并不会删除客户服务端的缓存记录，应通过 ConfirmMessageList 进行获取消息的确认并删除
+
+**ConfirmMessageList（确认已收到客户消息）**
+
+- Api Url: /api/Qa/ConfirmMessageList
+- 用途: 客户端正常收取到待收消息后，通过该接口确认消息已收到，服务端才将消息从代收队列中删除
 
 
 
@@ -518,12 +538,12 @@ job模式的答案将会通过对话插件模式执行自定义的插件函数�
 
 提问模式是由系统向客户提出问题，并根据客户的回答进行进一步的处理，例如询问客户地址等。
 
-- 设置方法：标准问题答案的a_type字段设置为ask，type_param字段设置为插件参数，格式为 **“['插件类名', '插件函数名', '问题分类', '问题场景', {插件的调用扩展入参字典}, '第一次是否直接执行']**”， 例如："['TestAskPlugins', 'test_pay_fun', 'test_finance', '', {}, 'true', ]"  将调用“ask” 类型插件的TestAskPlugins.test_pay_fun
+- 设置方法：标准问题答案的a_type字段设置为ask，type_param字段设置为插件参数，格式为 **“['插件类名', '插件函数名', '问题分类', '问题场景', {插件的调用扩展入参字典}, 第一次是否直接执行]**”， 例如："['TestAskPlugins', 'test_pay_fun', 'test_finance', '', {}, True, ]"  将调用“ask” 类型插件的TestAskPlugins.test_pay_fun
 - 处理流程：收到问题 -> 匹配到提问模式问题 -> 将问题信息添加到上下文 -> 向客户提问 -> 客户回答问题 -> 根据上下文执行问题对应的插件函数 -> 根据插件执行结果处理（直接回复问题答案文本-跳出提问，或跳转到另外一个标准问题进行回答处理，或者重新发起提问）
 
 注意：
 
-- 如果指定了第一次直接执行（设置为'true'），则再第一次匹配到问题后直接先执行插件函数，再根据插件函数的返回值回答客户；
+- 如果指定了第一次直接执行（设置为True），则再第一次匹配到问题后直接先执行插件函数，再根据插件函数的返回值回答客户；
 - 连续的多次提问有相同的上下文id进行数据关联，但一旦跳出了提问则上下文将被清除。
 
 
@@ -552,7 +572,7 @@ job模式的答案将会通过对话插件模式执行自定义的插件函数�
   
   - word_scale 可以设置分词匹配词比例控制，例如可以设置 word_scale 为 0.5，则问题语句 “你好啊” 中匹配上的 “你好” 占整个问题比例超过 0.5 , 视为匹配上；而 “朋友你好啊” 中匹配上的 “你好” 占整个问题比例低于 0.5 ， 视为未匹配上
   
-  - check 设置为检查意图插件的参数配置，格式为 "**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**"，例如 "['InitCheck', 'check_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]" 将调用 “nlpcheck” 类型插件InitCheck.check_by_nest(... , **{扩展入参}) ， 并根据函数返回的True和Fasle确认是否真正匹配了意图
+  - check 设置为检查意图插件的参数配置，格式为 "**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**"，例如 "['InitCheck', 'reject_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]" 将调用 “nlpcheck” 类型插件InitCheck.reject_by_nest(... , **{扩展入参}) ， 并根据函数返回的True和Fasle确认是否真正匹配了意图
   
   - info 设置为获取意图辅助信息，如果意图对应的问答模式是job或ask，获取到的辅助信息将会传入对应标准问题所调用插件的扩展入参字典；配置格式为 “**['插件类名', '插件函数名', {插件的调用扩展入参字典}]**”，例如 “['InitInfo', 'get_by_words', {'condition': [{'key': 'amount', 'class': ['m']}, {'key': 'in_name', 'class': ['nr']}]}]” 将调用 “nlpinfo” 类型插件的InitInfo.get_by_words获取问题中的信息，以字典方式返回，返回的字典将送入标准问题对应的插件调用的扩展入参中
   

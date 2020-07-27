@@ -223,7 +223,7 @@ class Client(object):
         传入信息为json字典，例如:
             {
                 'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
-                'username': 'test',
+                'user_name': 'test',
                 'password': '123456'
             }
 
@@ -239,9 +239,9 @@ class Client(object):
         """
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         _interface_seq_id = ''
-        if request.json is not None:
-            _interface_seq_id = request.json.get('interface_seq_id', '')
         try:
+            if request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
             _ret_json = {
                 'interface_seq_id': _interface_seq_id,
                 'status': '00000',
@@ -249,7 +249,7 @@ class Client(object):
             }
 
             _back = _qa_loader.login(
-                request.json['username'],
+                request.json['user_name'],
                 request.json['password']
             )
 
@@ -258,9 +258,9 @@ class Client(object):
                 _ret_json['user_id'] = _back['user_id']
                 _ret_json['token'] = _back['token']
             elif _back['status'] == '10000':
-                _ret_json['msg'] = 'username not exists!'
+                _ret_json['msg'] = 'user_name not exists!'
             else:
-                _ret_json['msg'] = 'username or password error!'
+                _ret_json['msg'] = 'user_name or password error!'
         except:
             if _qa_loader.logger:
                 _qa_loader.logger.error(
@@ -271,6 +271,60 @@ class Client(object):
                 'interface_seq_id': _interface_seq_id,
                 'status': '20001',
                 'msg': '生成session id出现异常'
+            }
+
+        # 返回结果
+        return jsonify(_ret_json)
+
+    @classmethod
+    @FlaskTool.log
+    @FlaskTool.db_connect
+    @auth.login_required
+    def AddSendMessage(cls, methods=['POST']):
+        """
+        添加测试的发送消息
+        传入信息为json字典，例如:
+            {
+                'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
+                'user_id': 0,
+                'from_user_name': '系统',
+                'msg': ''
+            }
+
+        @return {str} - 返回回答的json字符串
+            interface_seq_id : 回传客户端的接口请求id
+            status : 处理状态
+                00000 - 处理成功
+                10001 - 获取不到用户id
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        _interface_seq_id = ''
+        try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '00000',
+                'msg': 'success'
+            }
+            _user_id = int(request.headers.get('UserID', 0))
+
+            _qa_loader.qa.add_send_message(
+                request.json['user_id'], [request.json['msg'], ],
+                from_user_id=_user_id, from_user_name=request.json['from_user_name']
+            )
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '20001',
+                'msg': '添加发送消息异常'
             }
 
         # 返回结果
@@ -290,7 +344,7 @@ class TokenServer(object):
         传入信息为json字典，例如:
             {
                 'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
-                'username': 'API用户的登陆用户名（非客户用户）, 如果验证方式是密码形式提供',
+                'user_name': 'API用户的登陆用户名（非客户用户）, 如果验证方式是密码形式提供',
                 'password': 'API用户的登陆密码（非客户用户）, 如果验证方式是密码形式提供',
                 'user_id': '必须，要生成的令牌的用户id'
                 'last_token': 如果需要失效原token，送入
@@ -299,7 +353,7 @@ class TokenServer(object):
         @return {str} - 返回回答的json字符串
             interface_seq_id : 回传客户端的接口请求id
             status : 处理状态
-                00000 - 登陆成功
+                00000 - 处理成功
                 10001 - 用户名密码验证失败
                 10002 - 访问IP验证失败
                 2XXXX - 处理失败
@@ -309,9 +363,11 @@ class TokenServer(object):
         """
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         _interface_seq_id = ''
-        if request.json is not None:
-            _interface_seq_id = request.json.get('interface_seq_id', '')
+
         try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+
             _ret_json = {
                 'interface_seq_id': _interface_seq_id,
                 'status': '00000',
@@ -329,7 +385,7 @@ class TokenServer(object):
             else:
                 # 用户名密码验证
                 _back = _qa_loader.login(
-                    request.json['username'],
+                    request.json['user_name'],
                     request.json['password'],
                     is_generate_token=False
                 )
@@ -337,9 +393,9 @@ class TokenServer(object):
                 _ret_json['status'] = _back['status']
                 if _back['status'] != '00000':
                     if _back['status'] == '10001':
-                        _ret_json['msg'] = 'username not exists!'
+                        _ret_json['msg'] = 'user_name not exists!'
                     else:
-                        _ret_json['msg'] = 'username or password error!'
+                        _ret_json['msg'] = 'user_name or password error!'
 
             # 处理令牌生成
             if _back['status'] == '00000':
@@ -358,6 +414,98 @@ class TokenServer(object):
                 'interface_seq_id': _interface_seq_id,
                 'status': '20001',
                 'msg': '生成token出现异常'
+            }
+
+        # 返回结果
+        return jsonify(_ret_json)
+
+    @classmethod
+    @FlaskTool.log
+    @FlaskTool.db_connect
+    def AddSendMessage(cls, methods=['POST']):
+        """
+        将发向客户的消息放入客户待发送消息队列
+        传入信息为json字典，例如:
+            {
+                'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
+                'user_name': 'API用户的登陆用户名（非客户用户）, 如果验证方式是密码形式提供',
+                'password': 'API用户的登陆密码（非客户用户）, 如果验证方式是密码形式提供',
+                'user_id': 0,  # 要发送到的用户id
+                'msg': '', # 要发送的消息，支持以下3种传值方式
+                    # str - 文本类型的一个消息
+                    # [str, str, ...] - text类型消息，要发送的消息数组
+                    # dict - json类型消息，要发送的json字典
+                'from_user_id': xx,  消息发起用户id，可以填0
+                'from_user_name': '系统',
+            }
+
+        @return {str} - 返回回答的json字符串
+            interface_seq_id : 回传客户端的接口请求id
+            status : 处理状态
+                00000 - 处理成功
+                10001 - 用户名密码验证失败
+                10002 - 访问IP验证失败
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        _interface_seq_id = ''
+        try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '00000',
+                'msg': 'success',
+                'user_id': request.json['user_id']
+            }
+
+            # 进行权限验证
+            _security = _qa_loader.server_config['security']
+            if _security['token_server_auth_type'] == 'ip':
+                # ip验证模式
+                if request.remote_addr not in _security['token_server_auth_ip_list']:
+                    _ret_json['status'] = '10002'
+                    _ret_json['msg'] = '访问IP验证失败'
+            else:
+                # 用户名密码验证
+                _back = _qa_loader.login(
+                    request.json['user_name'],
+                    request.json['password'],
+                    is_generate_token=False
+                )
+
+                _ret_json['status'] = _back['status']
+                if _back['status'] != '00000':
+                    if _back['status'] == '10001':
+                        _ret_json['msg'] = 'user_name not exists!'
+                    else:
+                        _ret_json['msg'] = 'user_name or password error!'
+
+            # 处理消息添加
+            if _back['status'] == '00000':
+                # 处理要发送的消息
+                _msg = request.json['msg']
+                if type(_msg) == str:
+                    _msg = [_msg, ]
+
+                # 放入消息
+                _qa_loader.qa.add_send_message(
+                    request.json['user_id'], _msg,
+                    from_user_id=request.json.get('from_user_id', 0),
+                    from_user_name=request.json.get('from_user_name', '系统'),
+                )
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '20001',
+                'msg': '添加发送消息异常'
             }
 
         # 返回结果
@@ -390,10 +538,9 @@ class Qa(object):
         """
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         _interface_seq_id = ''
-        if request.json is not None:
-            _interface_seq_id = request.json.get('interface_seq_id', '')
         try:
-
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
             _ret_json = {
                 'interface_seq_id': _interface_seq_id,
                 'status': '00000',
@@ -445,9 +592,9 @@ class Qa(object):
         # 创建session并存入信息
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         _interface_seq_id = ''
-        if request.json is not None:
-            _interface_seq_id = request.json.get('interface_seq_id', '')
         try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
             # 尝试加入IP地址
             if 'ip' not in request.json.keys():
                 request.json['ip'] = request.remote_addr
@@ -486,7 +633,9 @@ class Qa(object):
                 'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
                 'session_id': GetSessionId获取的session id,
                 'question': 客户的输入,
-                'collection': 指定的问题分类，可不传
+                'collection': 指定的问题分类，可不传,
+                'std_question_id': 直接指定对应的标准问题，特殊情况时使用
+                'std_question_tag': 直接指定对应的标准问题tag，特殊情况时使用(与collection共同匹配)
             }
 
         @return {str} - 返回回答的json字符串
@@ -503,12 +652,12 @@ class Qa(object):
         """
         _qa_loader = RunTool.get_global_var('QA_LOADER')
         _interface_seq_id = ''
-        if request.json is not None:
-            _interface_seq_id = request.json.get('interface_seq_id', '')
         try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
             _ret_json = {
                 'interface_seq_id': _interface_seq_id,
-                'status': '00001',
+                'status': '00000',
                 'msg': 'success',
             }
             _session_id = request.json.get('session_id', None)
@@ -521,9 +670,15 @@ class Qa(object):
             _collection = request.json.get('collection', None)
             if _collection == '':
                 _collection = None
+            _std_question_id = request.json.get('std_question_id', None)
+            _std_question_tag = request.json.get('std_question_tag', None)
 
             # 需要显式打开和关闭数据库连接，避免连接池连接数超最大数
-            _answers = _qa_loader.qa.quession_search(_question, _session_id, _collection)
+            _answers = _qa_loader.qa.quession_search(
+                _question, session_id=_session_id,
+                collection=_collection, std_question_id=_std_question_id,
+                std_question_tag=_std_question_tag
+            )
 
             # 处理返回类型
             if len(_answers) > 0 and type(_answers[0]) == dict:
@@ -675,6 +830,9 @@ class Qa(object):
                 _upload_config.save_path, _new_filename
             ))
 
+            # 创建文件目录
+            FileTool.create_dir(os.path.split(_save_path)[0], exist_ok=True)
+
             # 保存文件
             _file.save(_save_path)
 
@@ -712,6 +870,176 @@ class Qa(object):
                 'interface_seq_id': interface_seq_id,
                 'status': '20001',
                 'msg': '上传文件异常'
+            }
+
+        return jsonify(_ret_json)
+
+    #############################
+    # 推送消息相关
+    #############################
+    @classmethod
+    @FlaskTool.log
+    @FlaskTool.db_connect
+    @auth.login_required
+    def GetMessageCount(cls, methods=['POST']):
+        """
+        获取当前用户的待收消息数
+        如果是异步调用，可传入json字典，例如:
+        {
+            'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用',
+            'user_id': int_用户id
+        }
+
+        @return {str} - 返回回答的json字符串
+            interface_seq_id : 回传客户端的接口请求id
+            status : 处理状态
+                00000 - 成功
+                10001 - 获取不到用户id
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+            message_count : 返回消息数
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        _interface_seq_id = ''
+        try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '00000',
+                'msg': 'success',
+            }
+
+            _user_id = int(request.json.get('user_id', 0))
+            if _user_id == 0:
+                _ret_json['status'] = '10001'
+                _ret_json['msg'] = '获取不到用户id'
+            else:
+                _ret_json['message_count'] = _qa_loader.qa.query_send_message_count(_user_id)
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'status': '20001',
+                'msg': '获取信息异常'
+            }
+
+        return jsonify(_ret_json)
+
+    @classmethod
+    @FlaskTool.log
+    @FlaskTool.db_connect
+    @auth.login_required
+    def GetMessageList(cls, methods=['POST']):
+        """
+        获取用户的待收消息清单
+        如果是异步调用，可传入json字典，例如:
+        {
+            'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
+            'user_id': int_用户id
+        }
+
+        @return {str} - 返回回答的json字符串
+            interface_seq_id : 回传客户端的接口请求id
+            status : 处理状态
+                00000 - 成功
+                10001 - 获取不到用户id
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+            messages : 返回消息数组
+            [
+                {
+                    'from_user_id': x, 'from_user_name': '',
+                    'msg_type': '', 'msg': object, 'create_time': ''
+                },
+            ]
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        _interface_seq_id = ''
+
+        try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '00000',
+                'msg': 'success',
+            }
+
+            _user_id = int(request.json.get('user_id', 0))
+            if _user_id == 0:
+                _ret_json['status'] = '10001'
+                _ret_json['msg'] = '获取不到用户id'
+            else:
+                _ret_json['messages'] = _qa_loader.qa.query_send_message(_user_id)
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'status': '20001',
+                'msg': '获取信息异常'
+            }
+
+        return jsonify(_ret_json)
+
+    @classmethod
+    @FlaskTool.log
+    @FlaskTool.db_connect
+    @auth.login_required
+    def ConfirmMessageList(cls, methods=['POST']):
+        """
+        客户端确认已收到的消息清单
+        可传入json字典，例如:
+        {
+            'interface_seq_id': '(可选)客户端序号，客户端可传入该值来支持异步调用'
+            'user_id': int_用户id
+            'message_ids': [id, id, ...]
+        }
+
+        @return {str} - 返回回答的json字符串
+            interface_seq_id : 回传客户端的接口请求id
+            status : 处理状态
+                00000 - 成功
+                10001 - 获取不到用户id
+                2XXXX - 处理失败
+            msg : 处理状态对应的描述
+        """
+        _qa_loader = RunTool.get_global_var('QA_LOADER')
+        _interface_seq_id = ''
+
+        try:
+            if hasattr(request, 'json') and request.json is not None:
+                _interface_seq_id = request.json.get('interface_seq_id', '')
+
+            _ret_json = {
+                'interface_seq_id': _interface_seq_id,
+                'status': '00000',
+                'msg': 'success',
+            }
+
+            _user_id = int(request.json.get('user_id', 0))
+            if _user_id == 0:
+                _ret_json['status'] = '10001'
+                _ret_json['msg'] = '获取不到用户id'
+            else:
+                for _id in request.json['message_ids']:
+                    _qa_loader.qa.confirm_send_message(_id)
+        except:
+            if _qa_loader.logger:
+                _qa_loader.logger.error(
+                    'Exception: %s' % traceback.format_exc(),
+                    extra={'callFunLevel': 1}
+                )
+            _ret_json = {
+                'status': '20001',
+                'msg': '确认消息异常'
             }
 
         return jsonify(_ret_json)

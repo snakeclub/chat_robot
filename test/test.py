@@ -192,26 +192,33 @@ _session_id = _qa.generate_session({
 # _question = '今天天气真好'
 # print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '你叫什么名字'
+# _question = '你叫什么名字'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '翡翠'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '翡翠是怎么形成的'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '继续'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '下一个'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '帮助'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '你叫什么名字？'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+# _question = '你叫什么名字？'
+# print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
+
+_question = '我要投诉'
 print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '翡翠'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
 
-_question = '翡翠是怎么形成的'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
-
-_question = '继续'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
-
-_question = '下一个'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
-
-_question = '帮助'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
-
-_question = '你叫什么名字？'
-print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))
-
-_question = '你叫什么名字？'
+_question = '我要投诉: 你好'
 print(_question, ' : ', _qa.quession_search(_question, session_id=_session_id))

@@ -7,7 +7,7 @@
         extend_plugin_path : 扩展插件代码文件目录
         enable_client : bool，是否启动客户端
         add_test_login_user : bool, 是否新增测试登陆用户，test/123456
-        client_path : 客户端目录
+        static_path : 静态文件路径
         debug : 是否是debug模式
         max_upload_size : float, 上传文件的最大大小，单位为MB
         flask : flask的运行参数设置
@@ -43,6 +43,7 @@
             select_options_tip : 匹配到多个问题时选项的提示
             select_options_tip_no_session : 在没有session的情况下，匹配到多个问题时选项的提示
             select_options_out_index : 在输入超出选项范围内容时的提示，提示中可以通过{$len$}替换为选项数
+            query_send_message_num : int, 每次获取主动发送消息数量
         nlp_config : NLP处理配置
             set_dictionary : 指定Jieba默认字典文件（如果需要更换）
             user_dict : 指定Jieba用户字典文件
@@ -78,9 +79,9 @@
     <excel_engine>xlrd</excel_engine>
     <excel_batch_num type="int">100</excel_batch_num>
     <extend_plugin_path>./ext_plugins</extend_plugin_path>
+    <static_path>./client</static_path>
     <enable_client type="bool">true</enable_client>
     <add_test_login_user type="bool">true</add_test_login_user>
-    <client_path>./client</client_path>
     <debug type="bool">true</debug>
     <max_upload_size type="float">16</max_upload_size>
     <flask>
@@ -89,7 +90,7 @@
         <processes type="int">1</processes>
     </flask>
     <security>
-        <enable_token type="bool">true</enable_token>
+        <enable_token type="bool">false</enable_token>
         <secret_key>this is a secret key</secret_key>
         <token_expire type="int">3600</token_expire>
         <salt>my_salt_str</salt>
@@ -101,22 +102,23 @@
     <qa_config>
         <use_redis type="bool">true</use_redis>
         <use_nlp type="bool">true</use_nlp>
-        <session_overtime type="float">300.0</session_overtime>
+        <session_overtime type="float">3600.0</session_overtime>
         <session_checktime type="float">60.0</session_checktime>
         <match_distance type="float">0.94</match_distance>
         <multiple_distance type="float">0.90</multiple_distance>
-        <multiple_in_collection type="int">3</multiple_in_collection>
+        <multiple_in_collection type="int">2</multiple_in_collection>
         <nprobe type="int">64</nprobe>
         <no_answer_milvus_id type="int">0</no_answer_milvus_id>
-        <no_answer_collection>test_chat</no_answer_collection>
+        <no_answer_collection>chat</no_answer_collection>
         <no_answer_str>对不起，我暂时回答不了您这个问题</no_answer_str>
         <select_options_tip>找到了多个匹配的问题，请输入序号选择您的问题:</select_options_tip>
         <select_options_tip_no_session>找到了多个匹配的问题, 请参照输入您的问题:</select_options_tip_no_session>
         <select_options_out_index>请输入正确的问题序号(范围为: 1 - {$len$})，例如输入"1"</select_options_out_index>
+        <query_send_message_num type="int">3</query_send_message_num>
     </qa_config>
     <nlp_config>
         <set_dictionary></set_dictionary>
-        <user_dict></user_dict>
+        <user_dict>./conf/user_dict.txt</user_dict>
         <enable_paddle type="bool">false</enable_paddle>
     </nlp_config>
     <milvus>

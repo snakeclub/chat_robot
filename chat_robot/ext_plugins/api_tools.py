@@ -39,7 +39,7 @@ CITY_DATA_FILENAME = 'city_data.json'  # 城市数据文件名
 CITY_DATA_FORCE_UPDATE = False  # 指定强制更新数据
 
 WEATHER_TRY_USE_IP_ADDR = True  # 如果没有客户地址信息，尝试通过IP地址获取
-WEATHER_COLLECTION = 'test_chat'  # 天气问题的分类集, 需注意修改
+WEATHER_COLLECTION = 'chat'  # 天气问题的分类集, 需注意修改
 WEATHER_PARTITION = ''  # 天气问题的特殊场景
 WEATHER_ERROR = u'亲, 没有找到您需要的天气信息'  # 没有找到天气信息返回的回答
 
@@ -413,7 +413,7 @@ class ApiToolAsk(object):
         # 插入问题答案
         Answer.create(
             std_question_id=_std_q.id, a_type='ask',
-            type_param="['ApiToolAsk', 'weather', '%s', '%s', {}, 'true']" % (
+            type_param="['ApiToolAsk', 'weather', '%s', '%s', {}, True]" % (
                 WEATHER_COLLECTION, WEATHER_PARTITION
             ),
             replace_pre_def='N',
@@ -432,7 +432,7 @@ class ApiToolAsk(object):
             match_words="['天气', '今天天气']",
             ignorecase='N', word_scale=0.0,
             info="['InitInfo', 'get_wordclass_list', {'condition': [{'key': 'time', 'class': ['t']}, {'key': 'addr', 'class': ['ns']}]}]",
-            check="['InitCheck', 'check_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]"
+            check="['InitCheck', 'reject_by_nest', {'next': {'天气': ['真好', '不错', '真差']}, }]"
         )
 
     @classmethod

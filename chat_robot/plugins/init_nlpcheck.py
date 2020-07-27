@@ -53,8 +53,8 @@ class InitCheck(object):
         pass
 
     @classmethod
-    def check_by_nest(cls, question: str, words: list, action: str, match_word: str, match_type: str,
-                      collection: str, partition: str, std_question_id: int, **kwargs):
+    def reject_by_nest(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                       collection: str, partition: str, std_question_id: int, **kwargs):
         """
         根据紧靠匹配动作词的词组否决意图
 
@@ -72,6 +72,10 @@ class InitCheck(object):
 
         @returns {bool} - 是否通过检查
         """
+        if match_type == 'exact_match':
+            # 精确匹配，无需进行判断
+            return True
+
         _next = kwargs.get('next', {})
         _prev = kwargs.get('prev', {})
         _index = 0
@@ -91,6 +95,39 @@ class InitCheck(object):
 
         # 检查通过
         return True
+
+    @classmethod
+    def check_by_position(cls, question: str, words: list, action: str, match_word: str, match_type: str,
+                          collection: str, partition: str, std_question_id: int, **kwargs):
+        """
+        根据匹配上词的位置决定是否通过
+
+        @param {str} question - 完整的问题句子
+        @param {list} words - 分词列表
+        @param {str} action - 匹配上的意图
+        @param {str} match_word - 匹配上的词
+        @param {str} match_type - 匹配类型，exact_match-精确匹配，nlp_match-分词匹配
+        @param {str} collection - 意图所属问题分类
+        @param {str} partition - 意图所属场景
+        @param {int} std_question_id - 对应标准问题id
+        @param {kwargs} - 扩展信息，来源于nlp_purpos_config_dict配置的入参参数
+            postion {str} - 位置，start/end/middle
+            index {int} - middle时指定开始位置
+
+        @returns {bool} - 是否通过检查
+        """
+        if match_type == 'exact_match':
+            # 精确匹配，无需进行判断
+            return True
+
+        _postion = kwargs.get('postion', 'start')
+        if _postion == 'start':
+            return question.startswith(match_word)
+        elif _postion == 'end':
+            return question.endswith(match_word)
+        else:
+            _index = question.find(match_word)
+            return _index == kwargs.get('index', 0)
 
 
 if __name__ == '__main__':

@@ -86,6 +86,34 @@ class InitJob(object):
         return 'to', _std_q_id
 
     @classmethod
+    def get_random_answer_text(cls, question: str, session_id: str, match_list: list,
+                               qa: QA, qa_manager: QAManager, **kwargs) -> list:
+        """
+        从答案文本数组中获取随机答案进行回答
+        (answer字段为字符数组格式 "['a1', 'a2', ...]")
+
+        @param {str} question - 原始问题
+        @param {str} session_id - session_id
+        @param {list} match_list - 匹配上的问题、答案对象: [(StdQuestion, Answer)]
+        @param {QA} qa - 服务器的问答处理模块实例对象
+        @param {QAManager} qa_manager - 服务器的问答数据管理实例对象
+        @param {kwargs} - 扩展传入参数
+
+        @returns {list} - 按照不同的处理要求返回内容
+            'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
+                注：如果第二个参数返回None代表使用传入的答案的answer字段作为提示
+            'to', int - 跳转到指定问题处理，第二个参数为std_question_id
+        """
+        try:
+            _answer_list = eval(match_list[0][1].answer)
+        except:
+            return 'answer', None
+
+        # 随机选取问题答案
+        _answer = _answer_list[random.randint(0, len(_answer_list) - 1)]
+        return 'answer', [_answer, ]
+
+    @classmethod
     def save_info_with_para(cls, question: str, session_id: str, match_list: list,
                             qa: QA, qa_manager: QAManager, **kwargs) -> list:
         """

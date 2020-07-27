@@ -14,7 +14,8 @@
 
 import os
 import sys
-import copy
+from flask_cors import CORS
+from flask import Flask
 from HiveNetLib.simple_xml import SimpleXml
 from HiveNetLib.base_tools.file_tool import FileTool
 from HiveNetLib.base_tools.run_tool import RunTool
@@ -31,12 +32,16 @@ __AUTHOR__ = u'黎慧剑'  # 作者
 __PUBLISH__ = '2020.06.17'  # 发布日期
 
 
+app = Flask(__name__)
+CORS(app)
+
+
 def start_server(**kwargs):
     """
     启动聊天服务端应用
     """
     SERVER_CONFIG = RunTool.get_global_var('SERVER_CONFIG')
-    _loader = QAServerLoader(SERVER_CONFIG)
+    _loader = QAServerLoader(SERVER_CONFIG, app=app)
     RunTool.set_global_var('QA_LOADER', _loader)
 
     # 启动服务

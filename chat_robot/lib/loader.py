@@ -49,11 +49,12 @@ class QAServerLoader(object):
     QA问答服务装载器
     """
 
-    def __init__(self, server_config: dict, **kwargs):
+    def __init__(self, server_config: dict, app: Flask = None, **kwargs):
         """
         初始化QA问答服务
 
         @param {dict} server_config - 服务配置字典
+        @param {Flask} app=None - 服务
         """
         self.debug = server_config.get('debug', True)
         self.execute_path = server_config['execute_path']
@@ -75,8 +76,11 @@ class QAServerLoader(object):
             self.logger = Logger.create_logger_by_dict(_logger_config)
 
         self.server_config = server_config
-        self.app = Flask(__name__)
-        CORS(self.app)
+        self.app = app
+        if self.app is None:
+            self.app = Flask(__name__)
+            CORS(self.app)
+
         self.app.debug = self.debug
         self.app.send_file_max_age_default = datetime.timedelta(seconds=1)  # 设置文件缓存1秒
         self.app.config['JSON_AS_ASCII'] = False  # 显示中文
@@ -99,10 +103,22 @@ class QAServerLoader(object):
 
         # 装载NLP
         _nlp_config = self.server_config['nlp_config']
+        _user_dict = None
+        if _nlp_config['user_dict'] != '':
+            _user_dict = _nlp_config['user_dict']
+            if _user_dict.startswith('.'):
+                # 相对路径
+                _user_dict = os.path.join(self.execute_path, _user_dict)
+        _set_dictionary = None
+        if _nlp_config['set_dictionary'] != '':
+            _set_dictionary = _nlp_config['set_dictionary']
+            if _set_dictionary.startswith('.'):
+                # 相对路径
+                _set_dictionary = os.path.join(self.execute_path, _set_dictionary)
         self.nlp = NLP(
             plugins=self.plugins, data_manager_para=self.qa_manager.DATA_MANAGER_PARA,
             set_dictionary=None if _nlp_config['set_dictionary'] == '' else _nlp_config['set_dictionary'],
-            user_dict=None if _nlp_config['user_dict'] == '' else _nlp_config['user_dict'],
+            user_dict=_user_dict,
             enable_paddle=_nlp_config['enable_paddle'],
             parallel_num=_nlp_config.get('parallel_num', None),
             logger=self.logger
@@ -114,6 +130,9 @@ class QAServerLoader(object):
             qa_config=self.server_config['qa_config'], redis_config=self.server_config['redis'],
             logger=self.logger
         )
+
+        # 动态加载路由
+        self.api_class = [Qa, QaDataManager]
 
         # 完成插件的加载
         # plugins函数字典，格式为{'type':{'class_name': {'fun_name': fun, }, },}
@@ -135,12 +154,20 @@ class QAServerLoader(object):
         # 验证ip白名单处理
         _security['token_server_auth_ip_list'] = _security['token_server_auth_ip_list'].split(',')
 
-        # 动态加载路由
-        self.api_class = [Qa, QaDataManager]
-
         # 增加令牌服务的路由
         if _security['enable_token_server']:
             self.api_class.append(TokenServer)
+
+        # 增加静态路径
+        _static_path = self.server_config['static_path']
+        if _static_path[0:1] == '.':
+            # 相对路径
+            _static_path = os.path.realpath(
+                os.path.join(self.execute_path, _static_path)
+            )
+
+        self.app.static_folder = os.path.join(_static_path, 'static')
+        self.app.static_url_path = '/static/'
 
         # 增加客户端路由
         if self.server_config['enable_client']:
@@ -149,29 +176,15 @@ class QAServerLoader(object):
 
             # 创建测试用户
             if self.server_config['add_test_login_user']:
-                _user = RestfulApiUser.get_or_none(RestfulApiUser.username == 'test')
+                _user = RestfulApiUser.get_or_none(RestfulApiUser.user_name == 'test')
                 if _user is None:
                     self.register_user('test', '123456')
-
-            # 静态文件路径
-            _client_path = self.server_config['client_path']
-            if _client_path[0:1] == '.':
-                # 相对路径
-                _client_path = os.path.realpath(
-                    os.path.join(self.execute_path, _client_path)
-                )
-
-            self.app.static_folder = os.path.join(_client_path, 'static')
-            self.app.static_url_path = '/static/'
 
             # 加入客户端主页
             self.app.url_map.add(
                 Rule('/', endpoint='client', methods=['GET'])
             )
             self.app.view_functions['client'] = self._client_view_function
-
-            # 打印
-            self._log_debug('client path: %s' % _client_path)
 
         FlaskTool.add_route_by_class(self.app, self.api_class)
         self._log_debug(str(self.app.url_map))
@@ -189,25 +202,25 @@ class QAServerLoader(object):
     #############################
     # 安全认证相关处理
     #############################
-    def register_user(self, username: str, password: str) -> int:
+    def register_user(self, user_name: str, password: str) -> int:
         """
         注册登陆用户
 
-        @param {str} username - 登陆用户名
+        @param {str} user_name - 登陆用户名
         @param {str} password - 登陆密码
 
         @returns {int} - 用户id
         """
         _user = RestfulApiUser.create(
-            username=username, password_hash=generate_password_hash(password)
+            user_name=user_name, password_hash=generate_password_hash(password)
         )
         return _user.id
 
-    def login(self, username: str, password: str, is_generate_token: bool = True) -> dict:
+    def login(self, user_name: str, password: str, is_generate_token: bool = True) -> dict:
         """
         用户登陆
 
-        @param {str} username - 登陆用户名
+        @param {str} user_name - 登陆用户名
         @param {str} password - 登陆密码
         @param {bool} is_generate_token=True - 是否产生令牌
 
@@ -221,7 +234,7 @@ class QAServerLoader(object):
             'user_id': 0,
             'token': ''
         }
-        _user = RestfulApiUser.get_or_none(RestfulApiUser.username == username)
+        _user = RestfulApiUser.get_or_none(RestfulApiUser.user_name == user_name)
         if _user is None:
             _back['status'] = '10001'
         else:

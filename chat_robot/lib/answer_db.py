@@ -48,7 +48,8 @@ class Answer(BaseModel):
     """
     std_question_id = pw.BigIntegerField(primary_key=True)  # 标准问题ID
     a_type = pw.CharField(
-        choices=[('text', '文字答案'), ('job', '执行任务'), ('options', '选项'), ('ask', '上下文问题')],
+        choices=[('text', '文字答案'), ('job', '执行任务'), ('options', '选项'),
+                 ('ask', '上下文问题'), ('json', '字典形式答案')],
         default='text',
     )  # 答案类型
     type_param = pw.CharField(max_length=4000, default='')  # 答案类型扩展参数
@@ -65,6 +66,7 @@ class StdQuestion(BaseModel):
     标准问题清单
     """
     id = pw.BigAutoField()  # 自增字段
+    tag = pw.CharField(default='', index=True)  # 查找问题的字符标识
     q_type = pw.CharField(
         choices=[('ask', '问答类'), ('context', '场景类')],
         default='ask',
@@ -197,7 +199,7 @@ class RestfulApiUser(BaseModel):
     RestfulApi的使用用户表
     """
     id = pw.BigAutoField(primary_key=True)  # 自增字段
-    username = pw.CharField(max_length=32, index=True, unique=True)  # 登陆用户名
+    user_name = pw.CharField(max_length=32, index=True, unique=True)  # 登陆用户名
     password_hash = pw.CharField(max_length=128)  # 密码哈希值
 
     class Meta:
@@ -230,6 +232,48 @@ class UploadFileConfig(BaseModel):
     class Meta:
         # 定义数据库表名
         table_name = 'upload_file_config'
+
+
+# 主动向客户发送的消息表
+class SendMessageQueue(BaseModel):
+    """
+    待发送客户消息列表
+    """
+    id = pw.BigAutoField(primary_key=True)  # 消息id
+    from_user_id = pw.BigIntegerField(index=True)  # 消息来源用户ID
+    from_user_name = pw.CharField(default='系统')  # 消息来源用户名
+    user_id = pw.BigIntegerField(index=True)  # 要推送到的用户ID
+    msg_type = pw.CharField(
+        choices=[('text', '文本数组'), ('json', 'json字符串'), ],
+        default='text',
+    )  # 消息类型
+    msg = pw.CharField(max_length=4000)  # 消息内容
+    create_time = pw.DateTimeField(default=datetime.datetime.now)  # 创建时间
+
+    class Meta:
+        # 定义数据库表名
+        table_name = 'send_message_queue'
+
+
+class SendMessageHis(BaseModel):
+    """
+    待发送客户消息历史表
+    """
+    id = pw.BigIntegerField(primary_key=True)  # 消息id
+    from_user_id = pw.BigIntegerField(index=True)  # 消息来源用户ID
+    from_user_name = pw.CharField(default='系统')  # 消息来源用户名
+    user_id = pw.BigIntegerField(index=True)  # 要推送到的用户ID
+    msg_type = pw.CharField(
+        choices=[('text', '文本数组'), ('json', 'json字符串'), ],
+        default='text',
+    )  # 消息类型
+    msg = pw.CharField(max_length=4000)  # 消息内容
+    create_time = pw.DateTimeField()  # 创建时间
+    send_time = pw.DateTimeField(default=datetime.datetime.now)  # 发送时间
+
+    class Meta:
+        # 定义数据库表名
+        table_name = 'send_message_his'
 
 
 # 重定义数据库对象

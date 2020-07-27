@@ -2,487 +2,632 @@
 <html lang="en">
 
 <head>
-  <script src="/static/js/jquery-3.5.1.min.js"></script>
-  <script src="/static/js/PowerDate.js"></script>
-  <script src="/static/js/TimerControl.js"></script>
-  <script src="/static/js/json2.js"></script>
-  <script src="/static/js/functions.js"></script>
-  <meta charset="utf-8">
-  <link rel="icon" href="/static/pic/favicon.png">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#000000">
-  <meta name="description" content="Web site created using create-react-app">
-  <link rel="apple-touch-icon" href="/static/pic/logo192.png">
-  <link rel="manifest" href="/static/manifest.json">
-  <script type="text/javascript">
-    window.onload = function(){
-      // 先进行登陆
-      $.AjaxLogin('test','123456');
+    <script src="/static/js/jquery-3.5.1.min.js"></script>
+    <script src="/static/js/PowerDate.js"></script>
+    <script src="/static/js/TimerControl.js"></script>
+    <script src="/static/js/json2.js"></script>
+    <script src="/static/js/functions.js"></script>
+    <meta charset="utf-8">
+    <link rel="icon" href="/static/pic/favicon.png">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Web site created using create-react-app">
+    <link rel="apple-touch-icon" href="/static/pic/logo192.png">
+    <link rel="manifest" href="/static/manifest.json">
+    <script type="text/javascript">
+        window.onload = function () {
+            // 先进行登陆
+            if ($.UseToken) {
+                $.AjaxLogin('test', '123456');
+            }
 
-      // 获取用户Session ID
-      $.AjaxGetSessionId();
 
-      // 增加定时器，定时更新token, 设置为5分钟
-      window.setTimeout($.AjaxGenerateToken, 300000);
+            // 获取用户Session ID
+            $.AjaxGetSessionId();
 
-      // 聊天记录中增加时间
-      $.AddTimeStamp();
+            // 增加定时器，定时更新token, 设置为5分钟
+            if ($.UseToken) {
+                window.setInterval($.AjaxGenerateToken, 300000);
+            }
 
-      // 增加机器人提示信息
-      $.AddAnswer("您好，我是AI机器人，请和我聊天吧");
+            // 增加定时器，定时获取消息, 设置为10秒
+            window.setInterval($.AjaxGetMessage, 10000);
 
-      // 绑定事件
-      $("#send_button").click(function(){
-        $.QuestionSearch();
-      });
+            // 聊天记录中增加时间
+            $.AddTimeStamp();
 
-      // 上传文件的事件
-      $("#upload_files").click(function(){
-        $.AjaxUploadFile('product_pic', 'test');
-      });
+            // 增加机器人提示信息
+            $.AddAnswer("您好，我是AI机器人，请和我聊天吧");
 
-      $('#input_question').keypress(function(event){
-          var keynum = (event.keyCode ? event.keyCode : event.which);
-          if(keynum == '13'){
-              $.QuestionSearch();
-              // 返回false屏蔽后续按键处理
-              return false;
-          }
-      });
-    };
-</script>
-  <style>
-    #root,
-    body,
-    html {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      display: flex
-    }
+            // 绑定事件
+            $("#send_button").click(function () {
+                $.QuestionSearch();
+            });
 
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    p {
-      margin: 0
-    }
+            // 上传文件的事件
+            $("#upload_files").click(function () {
+                $.AjaxUploadFile('product_pic', 'test');
+            });
 
-    .ShowPic {
-      height:150px;
-      align-items:center;
-      justify-content:center;
-    }
+            // 添加服务端测试消息 add_message
+            $("#add_message").click(function () {
+                $.AjaxAddSendMessage();
+            });
 
-    .ShowPic img {
-      display: inline-block;
-      width:auto;
-      height:100%;
-    }
+            $('#input_question').keypress(function (event) {
+                var keynum = (event.keyCode ? event.keyCode : event.which);
+                if (keynum == '13') {
+                    $.QuestionSearch();
+                    // 返回false屏蔽后续按键处理
+                    return false;
+                }
+            });
+        };
+    </script>
+    <style>
+        #root,
+        body,
+        html {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            display: flex
+        }
 
-    .KnowledgeTable {
-      border-size: 0px;
-    }
+        h1,
+        h2,
+        h3,
+        h4,
+        h5,
+        p {
+            margin: 0
+        }
 
-    .KnowledgeTable p {
-      text-indent:25px;
-    }
+        .ShowPic {
+            height: 150px;
+            align-items: center;
+            justify-content: center;
+        }
 
-    .KnowledgeTitle {
-      font-family:"微软雅黑","黑体","宋体";
-      font-size:18px;
-      height:36px;
-    }
+        .ShowPic img {
+            display: inline-block;
+            width: auto;
+            height: 100%;
+        }
 
-    .KnowledgeImgContainer {
-      margin:0 5px 5px 0;
-      height:150px;
-      text-align: center;
-    }
+        .KnowledgeTable {
+            border-size: 0px;
+        }
 
-    .KnowledgeImgContainerLeft{
-      float:left;
-    }
+        .KnowledgeTable p {
+            text-indent: 25px;
+        }
 
-    .KnowledgeImgContainerRight{
-      float:right;
-    }
+        .KnowledgeTitle {
+            font-family: "微软雅黑", "黑体", "宋体";
+            font-size: 18px;
+            height: 36px;
+        }
 
-    .KnowledgeImgContainer img {
-      height:130px;
-      width:auto;
-      display:inline-block;
-    }
+        .KnowledgeImgContainer {
+            margin: 0 5px 5px 0;
+            height: 150px;
+            text-align: center;
+        }
 
-    .KnowledgeImgContainer a {
-      font-family:"微软雅黑","黑体","宋体";
-      font-size:12px;
-      height:12px;
-    }
-  </style>
-  <title>Chat Robot Demo</title>
-  <link href="/static/css/main.5ecd60fb.chunk.css" rel="stylesheet">
-  <style data-jss="" data-meta="MuiDivider">
-    .MuiDivider-root {
-      border: none;
-      height: 1px;
-      margin: 0;
-      flex-shrink: 0;
-      background-color: rgba(0, 0, 0, 0.12);
-    }
+        .KnowledgeImgContainerLeft {
+            float: left;
+        }
 
-    .MuiDivider-absolute {
-      left: 0;
-      width: 100%;
-      bottom: 0;
-      position: absolute;
-    }
+        .KnowledgeImgContainerRight {
+            float: right;
+        }
 
-    .MuiDivider-inset {
-      margin-left: 72px;
-    }
+        .KnowledgeImgContainer img {
+            height: 130px;
+            width: auto;
+            display: inline-block;
+        }
 
-    .MuiDivider-light {
-      background-color: rgba(0, 0, 0, 0.08);
-    }
+        .KnowledgeImgContainer a {
+            font-family: "微软雅黑", "黑体", "宋体";
+            font-size: 12px;
+            height: 12px;
+        }
 
-    .MuiDivider-middle {
-      margin-left: 16px;
-      margin-right: 16px;
-    }
+        .basic-grey {
+            margin: 4rem auto;
+            overflow: hidden;
+            flex-grow: 1;
+            position: absolute;
+            width: 500px;
+            background: #F7F7F7;
+            padding: 25px 15px 25px 10px;
+            font: 12px Georgia, "Times New Roman", Times, serif;
+            color: #888;
+            text-shadow: 1px 1px 1px #FFF;
+            border: 1px solid #E4E4E4;
+        }
 
-    .MuiDivider-vertical {
-      width: 1px;
-      height: 100%;
-    }
+        .basic-grey h1 {
+            font-size: 25px;
+            padding: 0px 0px 10px 40px;
+            display: block;
+            border-bottom: 1px solid #E4E4E4;
+            margin: -10px -15px 30px -10px;
+            color: #888;
+        }
 
-    .MuiDivider-flexItem {
-      height: auto;
-      align-self: stretch;
-    }
-  </style>
-  <style data-jss="" data-meta="MuiSnackbar">
-    .MuiSnackbar-root {
-      left: 8px;
-      right: 8px;
-      display: flex;
-      z-index: 1400;
-      position: fixed;
-      align-items: center;
-      justify-content: center;
-    }
+        .basic-grey h1>span {
+            display: block;
+            font-size: 11px;
+        }
 
-    .MuiSnackbar-anchorOriginTopCenter {
-      top: 8px;
-    }
+        .basic-grey label {
+            display: block;
+            margin: 0px;
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginTopCenter {
-        top: 24px;
-        left: 50%;
-        right: auto;
-        transform: translateX(-50%);
-      }
-    }
+        .basic-grey label>span {
+            float: left;
+            width: 20%;
+            text-align: right;
+            padding-right: 10px;
+            margin-top: 10px;
+            color: #888;
+        }
 
-    .MuiSnackbar-anchorOriginBottomCenter {
-      bottom: 8px;
-    }
+        .basic-grey input[type="text"],
+        .basic-grey input[type="email"],
+        .basic-grey textarea,
+        .basic-grey select {
+            border: 1px solid #DADADA;
+            color: #888;
+            height: 30px;
+            margin-bottom: 16px;
+            margin-right: 6px;
+            margin-top: 2px;
+            outline: 0 none;
+            padding: 3px 3px 3px 5px;
+            width: 70%;
+            font-size: 12px;
+            line-height: 15px;
+            box-shadow: inset 0px 1px 4px #ECECEC;
+            -moz-box-shadow: inset 0px 1px 4px #ECECEC;
+            -webkit-box-shadow: inset 0px 1px 4px #ECECEC;
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginBottomCenter {
-        left: 50%;
-        right: auto;
-        bottom: 24px;
-        transform: translateX(-50%);
-      }
-    }
+        .basic-grey textarea {
+            padding: 5px 3px 3px 5px;
+        }
 
-    .MuiSnackbar-anchorOriginTopRight {
-      top: 8px;
-      justify-content: flex-end;
-    }
+        .basic-grey select {
+            background: #FFF url('down-arrow.png') no-repeat right;
+            background: #FFF url('down-arrow.png') no-repeat right;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            text-indent: 0.01px;
+            text-overflow: '';
+            width: 70%;
+            height: 35px;
+            line-height: 25px;
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginTopRight {
-        top: 24px;
-        left: auto;
-        right: 24px;
-      }
-    }
+        .basic-grey textarea {
+            height: 100px;
+        }
 
-    .MuiSnackbar-anchorOriginBottomRight {
-      bottom: 8px;
-      justify-content: flex-end;
-    }
+        .basic-grey .button {
+            background: #E27575;
+            border: none;
+            padding: 10px 25px 10px 25px;
+            color: #FFF;
+            box-shadow: 1px 1px 5px #B6B6B6;
+            border-radius: 3px;
+            text-shadow: 1px 1px 1px #9E3F3F;
+            cursor: pointer;
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginBottomRight {
-        left: auto;
-        right: 24px;
-        bottom: 24px;
-      }
-    }
+        .basic-grey .button:hover {
+            background: #CF7A7A;
+        }
+    </style>
+    <title>Chat Robot Demo</title>
+    <link href="/static/css/main.5ecd60fb.chunk.css" rel="stylesheet">
+    <style data-jss="" data-meta="MuiDivider">
+        .MuiDivider-root {
+            border: none;
+            height: 1px;
+            margin: 0;
+            flex-shrink: 0;
+            background-color: rgba(0, 0, 0, 0.12);
+        }
 
-    .MuiSnackbar-anchorOriginTopLeft {
-      top: 8px;
-      justify-content: flex-start;
-    }
+        .MuiDivider-absolute {
+            left: 0;
+            width: 100%;
+            bottom: 0;
+            position: absolute;
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginTopLeft {
-        top: 24px;
-        left: 24px;
-        right: auto;
-      }
-    }
+        .MuiDivider-inset {
+            margin-left: 72px;
+        }
 
-    .MuiSnackbar-anchorOriginBottomLeft {
-      bottom: 8px;
-      justify-content: flex-start;
-    }
+        .MuiDivider-light {
+            background-color: rgba(0, 0, 0, 0.08);
+        }
 
-    @media (min-width:600px) {
-      .MuiSnackbar-anchorOriginBottomLeft {
-        left: 24px;
-        right: auto;
-        bottom: 24px;
-      }
-    }
-  </style>
-  <style data-jss="" data-meta="MuiSvgIcon">
-    .MuiSvgIcon-root {
-      fill: currentColor;
-      width: 1em;
-      height: 1em;
-      display: inline-block;
-      font-size: 1.5rem;
-      transition: fill 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
-      flex-shrink: 0;
-      user-select: none;
-    }
+        .MuiDivider-middle {
+            margin-left: 16px;
+            margin-right: 16px;
+        }
 
-    .MuiSvgIcon-colorPrimary {
-      color: #3f51b5;
-    }
+        .MuiDivider-vertical {
+            width: 1px;
+            height: 100%;
+        }
 
-    .MuiSvgIcon-colorSecondary {
-      color: #f50057;
-    }
+        .MuiDivider-flexItem {
+            height: auto;
+            align-self: stretch;
+        }
+    </style>
+    <style data-jss="" data-meta="MuiSnackbar">
+        .MuiSnackbar-root {
+            left: 8px;
+            right: 8px;
+            display: flex;
+            z-index: 1400;
+            position: fixed;
+            align-items: center;
+            justify-content: center;
+        }
 
-    .MuiSvgIcon-colorAction {
-      color: rgba(0, 0, 0, 0.54);
-    }
+        .MuiSnackbar-anchorOriginTopCenter {
+            top: 8px;
+        }
 
-    .MuiSvgIcon-colorError {
-      color: #f44336;
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginTopCenter {
+                top: 24px;
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+            }
+        }
 
-    .MuiSvgIcon-colorDisabled {
-      color: rgba(0, 0, 0, 0.26);
-    }
+        .MuiSnackbar-anchorOriginBottomCenter {
+            bottom: 8px;
+        }
 
-    .MuiSvgIcon-fontSizeInherit {
-      font-size: inherit;
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginBottomCenter {
+                left: 50%;
+                right: auto;
+                bottom: 24px;
+                transform: translateX(-50%);
+            }
+        }
 
-    .MuiSvgIcon-fontSizeSmall {
-      font-size: 1.25rem;
-    }
+        .MuiSnackbar-anchorOriginTopRight {
+            top: 8px;
+            justify-content: flex-end;
+        }
 
-    .MuiSvgIcon-fontSizeLarge {
-      font-size: 2.1875rem;
-    }
-  </style>
-  <style data-jss="" data-meta="makeStyles">
-    .jss82 {
-      margin: 4rem auto;
-      display: flex;
-      overflow: hidden;
-      flex-grow: 1;
-      max-width: 700px;
-      background: #666769;
-      box-shadow: 0 1.1px 2.9px rgba(0, 0, 0, 0.044), 0 2.5px 6.8px rgba(0, 0, 0, 0.063), 0 4.5px 12.3px rgba(0, 0, 0, 0.078), 0 7.4px 20.4px rgba(0, 0, 0, 0.092), 0 12.2px 33.6px rgba(0, 0, 0, 0.107), 0 21.3px 58.7px rgba(0, 0, 0, 0.126), 0 46px 127px rgba(0, 0, 0, 0.17);
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginTopRight {
+                top: 24px;
+                left: auto;
+                right: 24px;
+            }
+        }
 
-    .jss83 {
-      flex: 0 0 100px;
-    }
+        .MuiSnackbar-anchorOriginBottomRight {
+            bottom: 8px;
+            justify-content: flex-end;
+        }
 
-    .jss84 {
-      flex: 1;
-      margin: 0 auto;
-      display: flex;
-      position: relative;
-      flex-direction: column;
-      background-color: #fff;
-    }
-  </style>
-  <style data-jss="" data-meta="makeStyles">
-    .jss101 {
-      margin: 4rem auto;
-      display: flex;
-      overflow: hidden;
-      flex-grow: 1;
-      max-width: 700px;
-      background: #666769;
-      box-shadow: 0 1.1px 2.9px rgba(0, 0, 0, 0.044), 0 2.5px 6.8px rgba(0, 0, 0, 0.063), 0 4.5px 12.3px rgba(0, 0, 0, 0.078), 0 7.4px 20.4px rgba(0, 0, 0, 0.092), 0 12.2px 33.6px rgba(0, 0, 0, 0.107), 0 21.3px 58.7px rgba(0, 0, 0, 0.126), 0 46px 127px rgba(0, 0, 0, 0.17);
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginBottomRight {
+                left: auto;
+                right: 24px;
+                bottom: 24px;
+            }
+        }
 
-    .jss102 {
-      flex: 0 0 100px;
-    }
+        .MuiSnackbar-anchorOriginTopLeft {
+            top: 8px;
+            justify-content: flex-start;
+        }
 
-    .jss103 {
-      flex: 1;
-      margin: 0 auto;
-      display: flex;
-      position: relative;
-      flex-direction: column;
-      background-color: #fff;
-    }
-  </style>
-  <style data-jss="" data-meta="makeStyles">
-    .jss104 {
-      color: #000;
-      display: flex;
-      padding: 24px;
-      align-items: center;
-      border-bottom: 1px solid #B0B0B9;
-      background-color: #fff;
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginTopLeft {
+                top: 24px;
+                left: 24px;
+                right: auto;
+            }
+        }
 
-    .jss105 {
-      margin-right: 20px;
-    }
-  </style>
-  <style data-jss="" data-meta="makeStyles">
-    .jss106 {
-      flex: 1;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-    }
+        .MuiSnackbar-anchorOriginBottomLeft {
+            bottom: 8px;
+            justify-content: flex-start;
+        }
 
-    .jss107 {
-      color: #000;
-      height: calc(100vh - 8rem - 340px);
-      padding: 40px;
-      font-size: 15px;
-      overflow-y: auto;
-    }
+        @media (min-width:600px) {
+            .MuiSnackbar-anchorOriginBottomLeft {
+                left: 24px;
+                right: auto;
+                bottom: 24px;
+            }
+        }
+    </style>
+    <style data-jss="" data-meta="MuiSvgIcon">
+        .MuiSvgIcon-root {
+            fill: currentColor;
+            width: 1em;
+            height: 1em;
+            display: inline-block;
+            font-size: 1.5rem;
+            transition: fill 200ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
+            flex-shrink: 0;
+            user-select: none;
+        }
 
-    .jss108 {
-      flex: 0 0 154px;
-      padding: 20px;
-      position: relative;
-      border-top: 1px solid #B0B0B9;
-      background-color: #fff;
-    }
+        .MuiSvgIcon-colorPrimary {
+            color: #3f51b5;
+        }
 
-    .jss109 {
-      display: flex;
-      margin-top: 16px;
-    }
+        .MuiSvgIcon-colorSecondary {
+            color: #f50057;
+        }
 
-    .jss110 {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      background-size: 64px;
-      background-image: url("data:image/jpeg;base64,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"
-        );
-    }
+        .MuiSvgIcon-colorAction {
+            color: rgba(0, 0, 0, 0.54);
+        }
 
-    .jss111 {
-      color: #000;
-      display: flex;
-      padding: 14px 21px;
-      position: relative;
-      max-width: 300px;
-      align-items: center;
-      line-height: 1.6;
-      margin-left: 20px;
-      border-radius: 10px;
-      background-color: #fff;
-    }
+        .MuiSvgIcon-colorError {
+            color: #f44336;
+        }
 
-    .question .jss111 {
-      background-color: #C7EDFF;
-    }
+        .MuiSvgIcon-colorDisabled {
+            color: rgba(0, 0, 0, 0.26);
+        }
 
-    .answer .jss111 {
-      background-color: #E5E5E5;
-    }
+        .MuiSvgIcon-fontSizeInherit {
+            font-size: inherit;
+        }
 
-    .jss111 p {
-      max-width: 100%;
-      word-break: break-all;
-    }
+        .MuiSvgIcon-fontSizeSmall {
+            font-size: 1.25rem;
+        }
 
-    .jss112 {
-      color: #B0B0B9;
-      right: 30px;
-      width: 60px;
-      bottom: 20px;
-      cursor: pointer;
-      height: 60px;
-      display: flex;
-      position: absolute;
-      align-items: center;
-      justify-content: center;
-    }
+        .MuiSvgIcon-fontSizeLarge {
+            font-size: 2.1875rem;
+        }
+    </style>
+    <style data-jss="" data-meta="makeStyles">
+        .jss82 {
+            margin: 4rem auto;
+            display: flex;
+            overflow: hidden;
+            flex-grow: 1;
+            max-width: 700px;
+            background: #666769;
+            box-shadow: 0 1.1px 2.9px rgba(0, 0, 0, 0.044), 0 2.5px 6.8px rgba(0, 0, 0, 0.063), 0 4.5px 12.3px rgba(0, 0, 0, 0.078), 0 7.4px 20.4px rgba(0, 0, 0, 0.092), 0 12.2px 33.6px rgba(0, 0, 0, 0.107), 0 21.3px 58.7px rgba(0, 0, 0, 0.126), 0 46px 127px rgba(0, 0, 0, 0.17);
+        }
 
-    .jss113 {
-      top: 16px;
-      width: 0;
-      height: 0;
-      position: absolute;
-      border-top: 10px solid transparent;
-      border-bottom: 10px solid transparent;
-    }
+        .jss83 {
+            flex: 0 0 100px;
+        }
 
-    .question .jss113 {
-      border-left: 10px solid #AEE5FF;
-    }
+        .jss84 {
+            flex: 1;
+            margin: 0 auto;
+            display: flex;
+            position: relative;
+            flex-direction: column;
+            background-color: #fff;
+        }
+    </style>
+    <style data-jss="" data-meta="makeStyles">
+        .jss101 {
+            margin: 4rem auto;
+            display: flex;
+            overflow: hidden;
+            flex-grow: 1;
+            max-width: 700px;
+            background: #666769;
+            box-shadow: 0 1.1px 2.9px rgba(0, 0, 0, 0.044), 0 2.5px 6.8px rgba(0, 0, 0, 0.063), 0 4.5px 12.3px rgba(0, 0, 0, 0.078), 0 7.4px 20.4px rgba(0, 0, 0, 0.092), 0 12.2px 33.6px rgba(0, 0, 0, 0.107), 0 21.3px 58.7px rgba(0, 0, 0, 0.126), 0 46px 127px rgba(0, 0, 0, 0.17);
+        }
 
-    .answer .jss113 {
-      border-right: 10px solid #fff;
-    }
-  </style>
+        .jss102 {
+            flex: 0 0 100px;
+        }
+
+        .jss103 {
+            flex: 1;
+            margin: 0 auto;
+            display: flex;
+            position: relative;
+            flex-direction: column;
+            background-color: #fff;
+        }
+    </style>
+    <style data-jss="" data-meta="makeStyles">
+        .jss104 {
+            color: #000;
+            display: flex;
+            padding: 24px;
+            align-items: center;
+            border-bottom: 1px solid #B0B0B9;
+            background-color: #fff;
+        }
+
+        .jss105 {
+            margin-right: 20px;
+        }
+    </style>
+    <style data-jss="" data-meta="makeStyles">
+        .jss106 {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .jss107 {
+            color: #000;
+            height: calc(100vh - 8rem - 340px);
+            padding: 40px;
+            font-size: 15px;
+            overflow-y: auto;
+        }
+
+        .jss108 {
+            flex: 0 0 154px;
+            padding: 20px;
+            position: relative;
+            border-top: 1px solid #B0B0B9;
+            background-color: #fff;
+        }
+
+        .jss109 {
+            display: flex;
+            margin-top: 16px;
+        }
+
+        .jss110 {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-size: 64px;
+            background-image: url("data:image/jpeg;base64,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");
+        }
+
+        .jss111 {
+            color: #000;
+            display: flex;
+            padding: 14px 21px;
+            position: relative;
+            max-width: 300px;
+            align-items: center;
+            line-height: 1.6;
+            margin-left: 20px;
+            border-radius: 10px;
+            background-color: #fff;
+        }
+
+        .question .jss111 {
+            background-color: #C7EDFF;
+        }
+
+        .answer .jss111 {
+            background-color: #E5E5E5;
+        }
+
+        .jss111 p {
+            max-width: 100%;
+            word-break: break-all;
+        }
+
+        .jss112 {
+            color: #B0B0B9;
+            right: 30px;
+            width: 60px;
+            bottom: 20px;
+            cursor: pointer;
+            height: 60px;
+            display: flex;
+            position: absolute;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .jss113 {
+            top: 16px;
+            width: 0;
+            height: 0;
+            position: absolute;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+
+        .question .jss113 {
+            border-left: 10px solid #AEE5FF;
+        }
+
+        .answer .jss113 {
+            border-right: 10px solid #fff;
+        }
+    </style>
+
 </head>
 
 <body><noscript>You need to enable JavaScript to run this app.</noscript>
-  <div id="root">
-    <div class="jss101">
-      <div style="flex: 0 0 80px; background: rgb(0, 0, 0); text-align: center; padding-top: 20px;"><img src="/static/pic/favicon.png" alt="logo" style="width: 40px;"></div>
-      <div class="jss103">
-        <header class="jss104" id="header">
-          <p class="jss105">机器人演示客户端 powered by 黎慧剑 (Copy from Milvus)</p>
-          <p id="thinking" style="display:none;">思考中。。。</p>
-        </header>
-        <div class="jss106">
-          <div class="jss107" id="chat_logs">
-          </div>
-          <hr class="MuiDivider-root MuiDivider-middle" style="background-color: rgb(255, 255, 255); margin: 0px;">
-          <div class="jss108"><textarea id="input_question" rows="10" aria-label="empty textarea" placeholder="请输入问题，比如：你能做什么"
-              style="width: 100%; box-sizing: border-box; border: none; color: rgb(0, 0, 0); height: 154px;"></textarea><textarea
-              aria-hidden="true" readonly="" tabindex="-1"
-              style="visibility: hidden; position: absolute; overflow: hidden; height: 0px; top: 0px; left: 0px; transform: translateZ(0px); width: 312px; box-sizing: border-box; border: none; color: rgb(0, 0, 0);"></textarea>
-            <div class="jss112" id="send_button"><svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeLarge" focusable="false"
-                viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"></path>
-              </svg></div>
-          </div>
+    <div id="root">
+        <div class="jss101">
+            <div style="flex: 0 0 80px; background: rgb(0, 0, 0); text-align: center; padding-top: 20px;"><img
+                    src="/static/pic/favicon.png" alt="logo" style="width: 40px;"></div>
+            <div class="jss103">
+                <header class="jss104" id="header">
+                    <p class="jss105">机器人演示客户端 powered by 黎慧剑 (Copy from Milvus)</p>
+                    <p id="thinking" style="display:none;">思考中。。。</p>
+                </header>
+                <div class="jss106">
+                    <div class="jss107" id="chat_logs">
+                    </div>
+                    <hr class="MuiDivider-root MuiDivider-middle"
+                        style="background-color: rgb(255, 255, 255); margin: 0px;">
+                    <div class="jss108"><textarea id="input_question" rows="10" aria-label="empty textarea"
+                            placeholder="请输入问题，比如：你能做什么"
+                            style="width: 100%; box-sizing: border-box; border: none; color: rgb(0, 0, 0); height: 154px;"></textarea><textarea
+                            aria-hidden="true" readonly="" tabindex="-1"
+                            style="visibility: hidden; position: absolute; overflow: hidden; height: 0px; top: 0px; left: 0px; transform: translateZ(0px); width: 312px; box-sizing: border-box; border: none; color: rgb(0, 0, 0);"></textarea>
+                        <div class="jss112" id="send_button"><svg class="MuiSvgIcon-root MuiSvgIcon-fontSizeLarge"
+                                focusable="false" viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"></path>
+                            </svg></div>
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-  </div>
-  <p>
-  <p>
-  <input type="file" id="file" name="file"  multiple><input type="button" id="upload_files" value="upload">
+    <p></p>
+    <p>
+        <input type="file" id="file" name="file" multiple /><input type="button" id="upload_files" value="upload" />
+        <input type="button" id="add_message" value="add_message" />
+    </p>
+    <p><input type="button" id="create_complaint" value="我要投诉(表单形式)" onclick="$.ShowComplaintForm(true);" /></p>
+    <p><input type="button" id="add_complaint_resp" value="回复投诉(表单形式)" onclick="$.AjaxAddComplaintRespMsg();" /></p>
+    <p><input type="button" id="add_leave_message_resp" value="回复留言" onclick="$.AjaxAddLeaveMessageRespMsg();" /></p>
+    <div id="complaint" class="basic-grey" style="display:none;">
+        <h1>投诉<span id="complaint_tips">请在表单中留下您的投诉信息</span></h1>
+        <label>
+            <span id="complaint_time"></span>
+        </label>
+        <label>
+            <span id="complaint_status"></span>
+        </label>
+        <label>
+            <span>名字</span>
+            <input id="complaint_user_name" type="text" name="complaint_user_name" placeholder="您的称呼" />
+        </label>
+        <label>
+            <span>投诉信息</span>
+            <textarea id="complaint_text" name="complaint_text" placeholder="您的投诉信息"></textarea>
+        </label>
+        <label id="return_complaint">
+        </label>
+        <label>
+            <input id="complaint_send" type="button" class="button" value="提交" onclick="$.AjaxSaveComplaintForm();" />
+            <span>&nbsp;</span>
+            <input id="complaint_close" type="button" class="button" value="关闭" onclick="$('#complaint').hide();" />
+        </label>
+    </div>
+
+
 </body>
 
 </html>

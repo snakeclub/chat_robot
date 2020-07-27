@@ -28,7 +28,7 @@ from bert_serving.client import BertClient
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
-from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, RestfulApiUser, UploadFileConfig
+from chat_robot.lib.answer_db import AnswerDao, CollectionOrder, StdQuestion, Answer, ExtQuestion, NoMatchAnswers, CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, RestfulApiUser, UploadFileConfig, SendMessageQueue, SendMessageHis
 
 
 __MOUDLE__ = 'data_manager'  # 模块名
@@ -41,7 +41,8 @@ __PUBLISH__ = '2020.06.24'  # 发布日期
 # 答案库表清单
 ANSWERDB_TABLES = [
     Answer, StdQuestion, ExtQuestion, CollectionOrder, NoMatchAnswers,
-    CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, UploadFileConfig
+    CommonPara, NlpSureJudgeDict, NlpPurposConfigDict, UploadFileConfig,
+    SendMessageQueue, SendMessageHis
 ]
 
 # Restful Api安全相关表
@@ -813,6 +814,7 @@ class QAManager(object):
 
                         # 插入标准问题
                         _std_q = StdQuestion.create(
+                            tag=_row['partition'] if str(_row['partition']) != 'nan' else '',
                             q_type=_row['q_type'], milvus_id=_milvus_id, collection=_row['collection'],
                             partition=('' if _partition is None else _partition),
                             question=_row['question']
