@@ -18,16 +18,11 @@ import copy
 import uuid
 import time
 import re
-import json
 import datetime
 import threading
 import traceback
-import inspect
 import milvus as mv
-import pandas as pd
 import redis
-from HiveNetLib.base_tools.file_tool import FileTool
-from HiveNetLib.base_tools.import_tool import ImportTool
 # 根据当前文件路径将包路径纳入，在非安装的情况下可以引用到
 sys.path.append(os.path.abspath(os.path.join(
     os.path.dirname(__file__), os.path.pardir, os.path.pardir)))
@@ -965,7 +960,8 @@ class QA(object):
 
                         _answers = [_answers, ]
                     else:
-                        _stdq_id = _context_dict['options']['options'][_index - 1].std_question_id
+                        _stdq_id = _context_dict['options']['options'][_index -
+                                                                       1]['std_question_id']
                         _match_list = [
                             (StdQuestion.get(StdQuestion.id == _stdq_id),
                              Answer.get(Answer.std_question_id == _stdq_id))
@@ -1145,6 +1141,7 @@ class QA(object):
             return False, None
 
         _match_list = list()
+        _match_std = list()  # 匹配问题id清单，用于避免扩展问题重复匹配
         for _match in _result[0]:
             _stdq_and_answer = self._get_stdq_and_answer_from_db(
                 _match.id, collection, partition
@@ -1157,7 +1154,9 @@ class QA(object):
                 break
 
             # 非最优匹配，加入到清单
-            _match_list.append(_stdq_and_answer)
+            if _stdq_and_answer[0].id not in _match_std:
+                _match_std.append(_stdq_and_answer[0].id)
+                _match_list.append(_stdq_and_answer)
 
         # 进入到该步骤已是非最优匹配，检查匹配数量并返回
         if len(_match_list) > 0:

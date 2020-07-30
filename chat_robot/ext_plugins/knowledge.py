@@ -16,6 +16,7 @@ import sys
 import datetime
 import re
 import math
+import random
 import shutil
 import traceback
 import peewee as pw
@@ -87,7 +88,12 @@ class KnowledgeChapters(BaseModel):
     parent_chapter_id = pw.BigIntegerField(default=0, index=True)  # 父章节id
     last_chapter_id = pw.BigIntegerField(default=0, index=True)  # 上一章节id
     c_class = pw.CharField()  # 知识章节分类
-    title = pw.CharField()  # 章节标题
+    random_tag = pw.CharField(
+        choices=[('none', '不随机获取下一个章节'), ('book', '当前书本范围获取下一章节'), ('catalog', '当前目录范围获取下一随机章节')],
+        default='none',
+    )  # 指示是否随机获取下一个具备随机标记的记录
+    page = pw.IntegerField(default=-1, index=True)  # 页签数，在书本中该数字应该连续
+    title = pw.CharField(default='')  # 章节标题
     content = pw.CharField(max_length=4000, default='')  # 章节内容，存储的文本格式需要与客户端约定，是富文本还是普通文本
     image_id = pw.BigIntegerField(default=0)  # 章节显示图片id
     image_para = pw.CharField(default='')  # 显示图片参数，需与客户端约定，例如left/right等位置信息
@@ -112,6 +118,7 @@ THUMBNAIL_SIZE = (0, 150)  # 缩略图大小
 #############################
 # 控制指令相关配置
 #############################
+REPLACE_LINE_TAG = '\n<br>'  # 将\r\n,\r,\n 替换为指定的字符
 ACTION_COLLECTION = 'knowledge'  # 固定的控制意图匹配问题分类
 ACTION_PARTITION = 'control'  # 固定的控制意图匹配问题分类场景
 # 指令字典，与NlpPurposConfigDict的配置一致，注意关键词要加到用户字典中
@@ -183,7 +190,7 @@ ACTION_TIPS = {
 # 数据初始化处理工具
 #############################
 DATA_TABLES = [KnowledgImages, KnowledgeBooks, KnowledgeChapters]  # 数据表
-DELETE_COLLECTIONS = ['k_jadeite', 'knowledge']  # 删除数据时要删除的collecton清单
+DELETE_COLLECTIONS = ['k_jadeite', 'knowledge', 'k_humorous']  # 删除数据时要删除的collecton清单
 
 
 class InitDataTool(object):
@@ -317,7 +324,7 @@ class InitDataTool(object):
                 'create knowledge plugin nlp config success: %s!' % str(ACTION_DICT))
 
     @classmethod
-    def import_data(cls, qa_manager: QAManager, logger: Logger):
+    def import_data(cls, data_file: str, qa_manager: QAManager, logger: Logger):
         """
         导入数据
 
@@ -325,14 +332,7 @@ class InitDataTool(object):
         @param {Logger} logger - 日志对象
         """
         # 开始导入数据
-        _data_file = os.path.join(
-            os.path.dirname(__file__), KNOWLEDGE_DATA_PATH, KNOWLEDGE_DATA_FILENAME
-        )
-        if not os.path.exists(_data_file):
-            # 文件不存在
-            return
-
-        with pd.io.excel.ExcelFile(_data_file) as _excel_io:
+        with pd.io.excel.ExcelFile(data_file) as _excel_io:
             # 处理KnowledgImages
             _images_id_mapping = cls._import_knowledge_images(_excel_io, qa_manager, logger)
 
@@ -526,6 +526,7 @@ class InitDataTool(object):
         @param {dict} books_id_mapping - 书本的id映射字典
         """
         _chapters_id_mapping = dict()  # 图片excel上的id和真实id的映射关系
+        _book_page_index = dict()  # 书本当前页数索引
         # 章节清单, key为章节id，value为[章节类型, 父节点id, 上一节点id, 子孙节点中最后一个content节点id]，注意这个id都是实际数据库id
         _chapters_tree = dict()
         _catalogs = list()  # 按顺序登记所有的目录id
@@ -638,6 +639,20 @@ class InitDataTool(object):
                                     if _last_chapter_id == -1:
                                         _last_chapter_id = _last_catalog_id
 
+                        # 内容处理，将回车换行修改为特定的回车换行标志
+                        _content = '' if str(_row['content']) == 'nan' else _row['content']
+                        if REPLACE_LINE_TAG != '':
+                            _content = _content.replace('\r\n', '\n').replace(
+                                '\r', '\n').replace('\n', REPLACE_LINE_TAG)
+
+                        # 当前页处理，只有c_type为content才需要生成
+                        _page = -1
+                        if _row['c_type'] == 'content':
+                            _page = cls._get_book_page(
+                                books_id_mapping.get(_row['book_id'], _row['book_id']),
+                                _book_page_index
+                            )
+
                         # 插入章节信息
                         _k_chapter = KnowledgeChapters.create(
                             c_type=_row['c_type'],
@@ -647,8 +662,11 @@ class InitDataTool(object):
                             parent_chapter_id=_parent_chapter_id,
                             last_chapter_id=_last_chapter_id,
                             c_class=_row['c_class'],
-                            title=_row['title'],
-                            content='' if str(_row['content']) == 'nan' else _row['content'],
+                            random_tag='none' if str(
+                                _row['random_tag']) == 'nan' else _row['random_tag'],
+                            page=_page,
+                            title='' if str(_row['title']) == 'nan' else _row['title'],
+                            content=_content,
                             image_id=0 if str(_row['image_id']) == 'nan' else images_id_mapping.get(
                                 _row['image_id'], _row['image_id']),
                             image_para='' if str(
@@ -706,6 +724,31 @@ class InitDataTool(object):
                         'imported knowledge_chapters[%d]: %s' % (_skiprows, str(_df))
                     )
 
+    @classmethod
+    def _get_book_page(cls, book_id: int, book_page_index: dict) -> int:
+        """
+        返回当前书本的下一个页码
+
+        @param {int} book_id - 书本id
+        @param {dict} book_page_index - 当前页索引字典
+
+        @returns {int} - 返回当前书本的下一个页码
+        """
+        # 获取当前页数
+        if book_id not in book_page_index.keys():
+            # 需要获取该书本章节的最大页
+            _current_page = 0
+            _query = KnowledgeChapters.select(pw.fn.MAX(KnowledgeChapters.page).alias('page')).where(
+                KnowledgeChapters.book_id == book_id
+            ).dicts()[0]
+            if _query['page'] is not None:
+                _current_page = _query['page']
+            book_page_index[book_id] = _current_page
+
+        # 新增页
+        book_page_index[book_id] += 1
+        return book_page_index[book_id]
+
 
 #############################
 # 知识库问答插件
@@ -750,6 +793,9 @@ class KnowledgeAsk(object):
         @param {QAManager} qa_manager - 服务器的问答数据管理实例对象
         @param {kwargs} - 扩展传入参数
             chapter_id {int} - 匹配到的章节id
+            random {bool} - 选填，是否随机获取章节，默认为False
+            book_name {int} - 选填，随机获取章节所在的书本名
+            注：当随机匹配时，如果chapter_id有值，则取chapter_id所在目录下的随机章节；否则取书本下的随机章节
 
         @param {str, object} - 按照不同的处理要求返回内容
             'answer', [str, ...]  - 直接返回回复内容，第二个参数为回复内容
@@ -765,7 +811,22 @@ class KnowledgeAsk(object):
         _context_dict = qa.get_context_dict(session_id)
         if 'knowledge_control' not in _context_dict['ask'].keys():
             # 第一次进入问答模块，获取章节信息
-            _chapter_dict = cls._get_chapter_content(kwargs['chapter_id'])
+            if kwargs.get('random', False):
+                # 获取随机记录
+                _chapter_id = kwargs.get('chapter_id', -1)
+                _book_id = -1
+                if _chapter_id == -1:
+                    _random_tag = 'book'
+                    _book_id = KnowledgeBooks.get(KnowledgeBooks.name == kwargs['book_name']).id
+                else:
+                    _random_tag = 'catalog'
+
+                _chapter_dict = cls._get_chapter_content(
+                    cls._get_random_chapter(_random_tag, chapter_id=_chapter_id, book_id=_book_id)
+                )
+            else:
+                # 指定获取记录
+                _chapter_dict = cls._get_chapter_content(kwargs['chapter_id'])
 
             # 生成控制字典并放入上下文
             _context_dict['ask']['knowledge_control'] = {
@@ -775,6 +836,7 @@ class KnowledgeAsk(object):
                 'c_type': _chapter_dict['c_type'],
                 'more': _chapter_dict['more'],
                 'book_id': _chapter_dict['book_id'],
+                'random_tag': _chapter_dict['random_tag'],
             }
             qa.add_ask_context(session_id, _context_dict['ask'])
 
@@ -792,6 +854,7 @@ class KnowledgeAsk(object):
                 'current_id': _chapter_dict['current_id'],
                 'more': _chapter_dict['more'],
                 'book_id': _chapter_dict['book_id'],
+                'random_tag': _chapter_dict['random_tag'],
                 'title': _chapter_dict['title'],
                 'contents': _chapter_dict['contents']
             }]
@@ -820,28 +883,36 @@ class KnowledgeAsk(object):
                         _knowledge_control['more'] = False
                         _ret_answers = ('again', [ACTION_TIPS['no_more'], ])
                 else:
-                    # 都是找下一个章节
-                    if _knowledge_control['c_type'] == 'section':
-                        # 子段落的下一个章节需要找回父节点来处理
-                        _parent_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
-                            KnowledgeChapters.id == _knowledge_control['parent_id']
-                        )
-                        _next_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
-                            (KnowledgeChapters.last_chapter_id == _parent_chapter.id) & (
-                                KnowledgeChapters.c_type != 'section')
+                    # 找下一个章节
+                    if _knowledge_control.get('random_tag', 'none') in ['book', 'catalog']:
+                        # 随机获取
+                        _next_chapter = cls._get_random_chapter(
+                            _knowledge_control['random_tag'],
+                            chapter_id=_knowledge_control['current_id']
                         )
                     else:
-                        _next_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
-                            KnowledgeChapters.last_chapter_id == _knowledge_control['current_id']
-                        )
+                        # 取下一个章节
+                        if _knowledge_control['c_type'] == 'section':
+                            # 子段落的下一个章节需要找回父节点来处理
+                            _parent_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
+                                KnowledgeChapters.id == _knowledge_control['parent_id']
+                            )
+                            _next_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
+                                (KnowledgeChapters.last_chapter_id == _parent_chapter.id) & (
+                                    KnowledgeChapters.c_type != 'section')
+                            )
+                        else:
+                            _next_chapter: KnowledgeChapters = KnowledgeChapters.get_or_none(
+                                KnowledgeChapters.last_chapter_id == _knowledge_control['current_id']
+                            )
 
-                    if _next_chapter is None:
-                        # 已经是最后一个节点了
-                        _ret_answers = ('again', [ACTION_TIPS['last_chapter'], ])
+                        if _next_chapter is None:
+                            # 已经是最后一个节点了
+                            _ret_answers = ('again', [ACTION_TIPS['last_chapter'], ])
 
                 # 获取下一节点信息字典
                 if _next_chapter is not None:
-                    _chapter_dict = cls._get_chapter_content(_next_chapter.id)
+                    _chapter_dict = cls._get_chapter_content(_next_chapter)
             elif _actions[0]['action'] == 'prev':
                 # 上一个知识点
                 _last_chapter_id = _knowledge_control['last_id']
@@ -866,6 +937,7 @@ class KnowledgeAsk(object):
                     'c_type': _chapter_dict['c_type'],
                     'more': _chapter_dict['more'],
                     'book_id': _chapter_dict['book_id'],
+                    'random_tag': _chapter_dict['random_tag'],
                 }
                 qa.add_ask_context(session_id, _context_dict['ask'])
 
@@ -883,6 +955,7 @@ class KnowledgeAsk(object):
                     'current_id': _chapter_dict['current_id'],
                     'more': _chapter_dict['more'],
                     'book_id': _chapter_dict['book_id'],
+                    'random_tag': _chapter_dict['random_tag'],
                     'title': _chapter_dict['title'],
                     'contents': _chapter_dict['contents']
                 }]
@@ -964,7 +1037,7 @@ class KnowledgeAsk(object):
         """
         获取章节内容
 
-        @param {int} chapter_id - 章节id
+        @param {int|KnowledgeChapters} chapter_id - 章节id 或 章节记录对象
         @param {bool} force_get_one=False - 强制仅获取一个答案
 
         @returns {dict} - 章节内容字典
@@ -975,6 +1048,7 @@ class KnowledgeAsk(object):
                 'c_type': xx,  # 当前章节类型
                 'more': True/False,  # 是否有更多内容
                 'book_id': xx,  # 书本id
+                'random_tag': xx, # 随机获取标记
                 'title': xx,  # 当前章节显示标题
                 'contents': [
                     {
@@ -995,8 +1069,12 @@ class KnowledgeAsk(object):
         if force_get_one:
             _SECTION_NUM_SHOW_LIMIT = 0
 
-        _chapter: KnowledgeChapters = KnowledgeChapters.get(
-            KnowledgeChapters.id == chapter_id)
+        if type(chapter_id) == KnowledgeChapters:
+            # 直接传入对象
+            _chapter = chapter_id
+        else:
+            _chapter: KnowledgeChapters = KnowledgeChapters.get(
+                KnowledgeChapters.id == chapter_id)
 
         if _chapter.c_type == 'catalog':
             # 如果只是目录，要向下找到子孙节点的第一个content节点
@@ -1027,6 +1105,7 @@ class KnowledgeAsk(object):
             'c_type': _chapter.c_type,  # 当前章节的类型
             'more': False,  # 是否有更多内容
             'book_id': _chapter.book_id,  # 书本id
+            'random_tag': _chapter.random_tag,  # 随机获取标记
             'title': _title,  # 当前章节显示标题
             'contents': [
                 {
@@ -1089,6 +1168,58 @@ class KnowledgeAsk(object):
             'para': image_para
         }
 
+    @classmethod
+    def _get_random_chapter(cls, random_tag: str, chapter_id: int = -1, book_id: int = -1) -> KnowledgeChapters:
+        """
+        获取随机章节
+
+        @param {str} random_tag - 'book'-当前书本范围获取下一章节，'catalog'-当前目录范围获取下一随机章节
+        @param {int} chapter_id=-1 - 当前章节id
+        @param {int} book_id=-1 - 书本id
+
+        @returns {KnowledgeChapters} - 返回找到的随机章节记录
+        """
+        _random_tag = random_tag
+        if random_tag == 'catalog' and chapter_id == -1:
+            # 如果没有传入章节id，则认为统一是书本范围
+            _random_tag = 'book'
+
+        if _random_tag == 'catalog':
+            # 获取章节范围
+            _chapter = KnowledgeChapters.get(KnowledgeChapters.id == chapter_id)
+            _book_id = _chapter.book_id
+            if _chapter.c_type == 'catalog':
+                _parent_id = chapter_id
+            else:
+                _parent_id = _chapter.parent_chapter_id
+
+            _query = KnowledgeChapters.select(
+                pw.fn.MIN(KnowledgeChapters.page).alias('min'),
+                pw.fn.MAX(KnowledgeChapters.page).alias('max')
+            ).where(
+                KnowledgeChapters.parent_chapter_id == _parent_id
+            ).dicts()[0]
+        else:
+            # 获取书本的章节范围
+            _book_id = book_id
+            if book_id == -1:
+                _chapter = KnowledgeChapters.get(KnowledgeChapters.id == chapter_id)
+                _book_id = _chapter.book_id
+
+            _query = KnowledgeChapters.select(
+                pw.fn.MIN(KnowledgeChapters.page).alias('min'),
+                pw.fn.MAX(KnowledgeChapters.page).alias('max')
+            ).where(
+                KnowledgeChapters.book_id == _book_id
+            ).dicts()[0]
+
+        # 随机获取章节
+        return KnowledgeChapters.get(
+            (KnowledgeChapters.book_id == _book_id) & (KnowledgeChapters.page == random.randint(
+                _query.get('min'), _query.get('max')
+            ))
+        )
+
 
 if __name__ == '__main__':
     # 当程序自己独立运行时执行的操作
@@ -1101,6 +1232,7 @@ if __name__ == '__main__':
     # 命令方式：python knowledge.py op=reset type=all
     # python knowledge.py op=import
     _opts = RunTool.get_kv_opts()
+    # _opts = {'op': 'import'}  # 测试
     if 'op' in _opts.keys():
         # 需要执行操作
         _op = _opts['op']
@@ -1118,5 +1250,17 @@ if __name__ == '__main__':
                 InitDataTool.remove_config(_init_objs['qa_manager'], _init_objs['logger'])
                 InitDataTool.import_config(_init_objs['qa_manager'], _init_objs['logger'])
         elif _op == 'import':
-            # 数据导入
-            InitDataTool.import_data(_init_objs['qa_manager'], _init_objs['logger'])
+            # 处理文件
+            _data_file = _opts.get('file', '')
+            if _data_file == '':
+                _data_file = os.path.join(
+                    os.path.dirname(__file__), KNOWLEDGE_DATA_PATH, KNOWLEDGE_DATA_FILENAME
+                )
+            else:
+                _data_file = os.path.join(
+                    os.path.dirname(__file__), _data_file
+                )
+                KNOWLEDGE_DATA_PATH = os.path.split(os.path.realpath(_data_file))[0]
+
+            # 导入数据
+            InitDataTool.import_data(_data_file, _init_objs['qa_manager'], _init_objs['logger'])

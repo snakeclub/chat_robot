@@ -150,7 +150,10 @@
         // 处理操作菜单
         html += '<tr><td>';
         // 上一个章节
-        html += '<a href="#" onclick="$.AjaxKnowledgeAction(\'prev\', ' + answers.current_id + ');">上一个</a><a>&nbsp;&nbsp;|&nbsp;&nbsp;</a>';
+        if (answers.random_tag == 'none') {
+            // 非随机的情况下才有上一个
+            html += '<a href="#" onclick="$.AjaxKnowledgeAction(\'prev\', ' + answers.current_id + ');">上一个</a><a>&nbsp;&nbsp;|&nbsp;&nbsp;</a>';
+        }
         if (answers.more) {
             html += '<a href="#" onclick="$.AjaxKnowledgeAction(\'more\', ' + answers.current_id + ');">查看更多</a><a>&nbsp;&nbsp;|&nbsp;&nbsp;</a>';
         }

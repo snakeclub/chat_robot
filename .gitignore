@@ -137,3 +137,9 @@ test_data/temp/
 
 # logs
 logs/
+
+# 测试数据
+/chat_robot/client/static/knowledge/
+/chat_robot/client/static/leave_message/
+/chat_robot/client/static/upload/
+
